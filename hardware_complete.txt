@@ -1,0 +1,64 @@
+pinpad:
+
+  external wiring:
+
+    *===*
+    |   | 
+    |   +-------------------+
+    |                       | 
+    *=R2'=*=R3'=*=R4'===Rn'=* (connector)
+
+    Ri' = (0, 1k, 1.2k, 1.5k, 1.8k, 4.7k/2, 3.3k, 4.7k, 6.8k, 10k, 22k, 68k)
+
+  internal wiring:
+
+    VCC-*-Ru----------+--+---+
+            +-Rm------+  |   |
+    C0--*---+           ^Dz  *--Keypad_1(+)
+            +-C_pinp--+  |
+    GND-*-Rd----------+--+---*--Keypad_2(-)
+
+    Ru     = 10k
+    Rd     = 1k
+    Rm     = 10k
+    C_pinp = 2*220nF
+    Dz     = 12V zener diode,
+    (everything in SMD parts except for Dz).
+
+main:
+
+       Motor    Door Switch
+    GND VDD PWM VCC-PIN-GND
+     |   |   |   |   |   |
+red ======================
+cable
+                            Keypad  Speaker Lock Switch
+                            (+) (-) PIN GND PIN GND
+                             |   |   |   |   |   |
+yellow ===========================================
+cable
+
+
+B5---onboard LED circuit--GND
+
+VCC---+--------------+
+      R_motor        C_sense
+      +----R_sense---+--------SENSE(C7)
+      |
+      servo----servo_pwm(C0)
+GND---+
+
+C5----speaker---GND
+
+VCC---C_vcc---GND
+
+currently found a better zener diode:
+  Keypad_1---<Dz'---Keypad_2
+
+Dz' = 5.6V zener diode
+R_motor = 5.6 Ohm
+R_sense = 1.5 MOhm
+C_sense = 0.47 uF
+C_vcc = 470 uF
+
+
