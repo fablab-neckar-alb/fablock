@@ -14,8 +14,7 @@ HEX_MAXIMUM_SIZE = 30720
 
 #MONITOR_PORT = /dev/ttyUSB0
 
-CFLAGS = -I.
-#CFLAGS = -std=gnu99 -flto
+CFLAGS = -std=gnu99 -flto
 LDFLAGS = -flto
 OTHER_OBJS =
 

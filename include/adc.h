@@ -1,5 +1,6 @@
 /*
-   --- ADC ---
+
+  ADC hardware accessors.
 
   Copyright (c) 2019 Thomas Kremer
 

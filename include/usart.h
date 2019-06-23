@@ -1,5 +1,6 @@
 /*
-  --- USART ---
+
+  USART driver with configurable output buffer and character-input event.
 
   Copyright (c) 2018 Thomas Kremer
 
@@ -194,6 +195,7 @@ void usart_write_P(const char* s, int len) {
   }
 }
 
+// Note: if you use this macro multiple times for the same string, it will consume its size in progmem multiple times. Better to wrap it in an inline function then.
 #define usart_msg(msg) usart_write_P(PSTR(msg),sizeof(msg)-1)
 
 // gets the free space in the write buffer.
