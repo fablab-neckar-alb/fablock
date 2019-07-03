@@ -53,6 +53,7 @@ my $log_everything = 0; #1;
 my $server_group = "www-data";
 
 my (@opts,%opts,%opts_explained);
+
 sub usage {
   my $ret = shift//0;
   if ($ret != 0) {
@@ -87,6 +88,7 @@ sub usage {
   logfile => \$logfile,
   passwdfile => \$passwd_file,
   pidfile => "",
+  "retry-on-error" => 0,
   help => sub { usage(0) },
 );
 
@@ -101,10 +103,11 @@ sub usage {
   logfile => "Path of the logfile",
   passwdfile => "Path of the /etc/shadow-style password file used",
   pidfile => "Write this pidfile. It is deleted upon server shutdown.",
+  "retry-on-error" => "Restart the daemon if any unexpected error happens.",
   help => "Show this help screen.",
 );
 
-@opts = qw(stdio|s! log-everything! debug|D! device|d=s baudrate|b=i unix-socket|sock|u=s unix-group|group|g=s logfile|l=s passwdfile|p=s pidfile|P=s help|h|?);
+@opts = qw(stdio|s! log-everything! debug|D! device|d=s baudrate|b=i unix-socket|sock|u=s unix-group|group|g=s logfile|l=s passwdfile|p=s pidfile|P=s retry-on-error! help|h|?);
 
 GetOptions(\%opts,@opts) or usage(2);
 if (@ARGV) {
@@ -292,7 +295,7 @@ package Cron {
     my $i = 0;
     while (defined $ev && $ev->{time} <= time) {
       $self->shift;
-      $ev->{sub}();
+      $ev->{sub}($ev);
       $ev = $self->get_next_event;
       $i++;
     }
@@ -785,13 +788,24 @@ sub run {
   return $ret;
 }
 
+while(1) {
+  eval {
+    setup();
+    my $ret = run();
+    close($tty); # want to be explicit here.
 
-setup();
-my $ret = run();
-close($tty); # want to be explicit here.
-
-if ($opts{pidfile} ne "") {
-  unlink $opts{pidfile};
+    if ($opts{pidfile} ne "") {
+      unlink $opts{pidfile};
+    }
+    exit $ret;
+  };
+  # we're here because the main loop died from an exception.
+  # Log the exception and exit or restart.
+  if ($@) {
+    log_error("Error encountered: \"$@\"");
+  }
+  exit 1 unless $opts{"retry-on-error"};
+  log_notice("Restarting in 10 seconds");
+  sleep 10;
 }
 
-exit $ret;
