@@ -116,7 +116,7 @@ if (@ARGV) {
 #my $ux_path = shift || "/tmp/ux_tty_server.sock";
 #my $logfile = shift || "/tmp/ux_tty_server.log";
 
-my ($server,$tty,$dev,$stdin,$sel,$running,%input_buffers,$baudrate,$stdout,$dev_bad_input,$dev_last_input,@door_state,$log);
+my ($server,$tty,$dev,$stdin,$sel,$running,%input_buffers,$baudrate,$stdout,$dev_bad_input,$dev_last_input,@door_state,$log,$cron);
 
 my %listeners;
 my $listener_lifetime = 3600;
@@ -171,6 +171,135 @@ sub setup_log {
 #}
 #my $logger = bless {}, "Logger";
 
+##### cron functions #####
+
+package Cron {
+  # In theory we could use binary heaps to make insert/remove/shift run
+  # in O(log(n)) or so, but in reality we don't have that many tasks anyway,
+  # so we just lazily use a hash and a sorted list and even just sort the
+  # list with "sort" everytime we make an insertion.
+  my ($class) = @_;
+  sub new {
+    return bless {events=>{},table=>[]}, ref $class || $class;
+  }
+
+  # schedule by (time,sub) or (time,name,sub);
+  # returns event object (may be discarded or used for later deschedule).
+  sub schedule {
+    my ($self,$time,$name,$sub) = @_;
+    my ($events,$table) = @$self{qw(events table)};
+    if (@_ <= 2) {
+      $sub = $name;# if ref $name eq "CODE";
+      $name = "$name";
+    }
+    #$sub //= $name;
+    #$name = "$name";
+    die "not a code ref" unless ref $sub eq "CODE";
+    my $event = $$events{$name};
+    if (defined $event) {
+      $event->{time} = $time;
+      $event->{sub} = $sub;# if defined $sub;
+      @$table = sort {$$a{time} <=> $$b{time}} @$table;
+    } else {
+      $event = { sub => $sub, time => $time, name => $name };
+      $$events{$name} = $event;
+      push @$table, $event;
+      @$table = sort {$$a{time} <=> $$b{time}} @$table;
+    }
+    return $event;
+  }
+
+  # deschedule by name or event object
+  sub deschedule {
+    my ($self,$name) = @_;
+    my ($events,$table) = @$self{qw(events table)};
+    if (ref $name eq "HASH") {
+      $name = $name->{name};
+    }
+    my $event = delete $$events{$name};
+    if (defined $event) {
+      for (0..$#$table) {
+        if ($$table[$_] == $event) {
+          splice @$table,$_,1;
+          return 1;
+          #last;
+        }
+      }
+      #@$table = grep $_ != $event, @$table;
+      #for (0..$#$table) {
+      #  $$table[$_]{ix} = $_;
+      #}
+      #if (!defined $event->{ix}) {
+        die "cron event found, but not in cron table!";
+      #}
+      #splice @$table,$event->{ix},1;
+      #return 1;
+    }
+    return 0;
+  }
+
+  # get a scheduled event by name. May return undef if the event is not scheduled.
+  sub get_event {
+    my ($self,$name) = @_;
+    my ($events,$table) = @$self{qw(events table)};
+    my $event = $$events{$name};
+    return $event;
+  }
+
+  # check if the given task is already scheduled.
+  sub is_scheduled {
+    my ($self,$name) = @_;
+    if (ref $name eq "HASH") {
+      $name = $name->{name};
+    }
+    my $event = $cron->get_event($name);
+    return defined $event;
+  }
+
+  # peek
+  sub get_next_event {
+    my ($self) = @_;
+    my ($events,$table) = @$self{qw(events table)};
+    return $$table[0];
+  }
+
+  # peek for the time, may return undef if no events planned.
+  # returns $max if otherwise greater or undef.
+  sub get_next_time {
+    my ($self,$max) = @_;
+    my $ev = $self->get_next_event();
+    my $time = defined $ev ? $$ev{time} : undef;
+    $time = $max if defined $max && (!defined $time || $time > $max);
+    return $time;
+  }
+
+  # shift the next event from the queue.
+  sub shift {
+    my ($self) = @_;
+    my ($events,$table) = @$self{qw(events table)};
+    my $event = CORE::shift @$table;
+    if (defined $event) {
+      delete $$events{$event->{name}};
+    }
+    return $event;
+  }
+
+  # execute all events that are due.
+  # returns the number of events executed.
+  sub execute {
+    my ($self) = @_;
+    my $ev = $self->get_next_event;
+    my $i = 0;
+    while (defined $ev && $ev->{time} <= time) {
+      $self->shift;
+      $ev->{sub}();
+      $ev = $self->get_next_event;
+      $i++;
+    }
+    return $i;
+  }
+}
+
 ##### listener functions #####
 
 sub prune_listeners {
@@ -222,6 +351,10 @@ sub send_dev {
   send_listeners("W",$buffer);
 }
 
+sub schedule_device_ping {
+  $cron->schedule(time+$dev_idle_timeout/2,"device_ping",\&do_device_ping);
+}
+
 sub set_baudrate {
   my ($baudrate) = @_;
   #$dev->baudrate($baudrate);
@@ -252,6 +385,7 @@ sub setup_device {
   $dev_bad_input = 0;
   $dev_last_input = time;
   @door_state = (0,0,0,2);
+  schedule_device_ping();
   send_dev("!d\n");
 }
 
@@ -259,6 +393,15 @@ sub reset_device {
   close($tty);
   #untie $dev;
   setup_device();
+}
+
+sub do_device_ping {
+  if ($dev_last_input+$dev_idle_timeout < time) {
+    log_warning("resetting device (too much inactivity)");
+    reset_device();
+  }
+  send_dev("!0\n");
+  schedule_device_ping();
 }
 
 ##### stdio & server setup functions #####
@@ -294,6 +437,7 @@ sub setup_stdio {
 }
 
 sub setup {
+  $cron = Cron->new;
   setup_log();
   setup_server();
   setup_device();
@@ -537,6 +681,7 @@ sub handle_dev {
     $handler->(\%msg) if defined $handler;
     $dev_last_input = time;
     $dev_bad_input = 0;
+    schedule_device_ping();
   } else {
     $dev_bad_input++;
     log_warning("garbage from device ($dev_bad_input)");
@@ -554,11 +699,6 @@ sub handle_dev {
 # device now and then.
 sub handle_idleness {
   prune_listeners();
-  if ($dev_last_input+$dev_idle_timeout < time) {
-    log_warning("resetting device (too much inactivity)");
-    reset_device();
-  }
-  send_dev("!0\n");
 }
 
 ##### main loop #####
@@ -574,8 +714,12 @@ sub run {
   my $ret = 0;
 
   while ($running) {
-    my @ready = $sel->can_read($idle_polltime);
-    if (!@ready) {
+    my $time = time;
+    my $next_cron = $cron->get_next_time; #($time+$idle_polltime);
+    my $polltime = (defined($next_cron) && $next_cron < $time+$idle_polltime) ? $next_cron-$time : $idle_polltime;
+    my @ready = $sel->can_read($polltime);
+    my $n_cron = $cron->execute;
+    if (!@ready && !$n_cron) {
       handle_idleness();
     }
     for (@ready) {
