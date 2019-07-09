@@ -12,11 +12,11 @@ pinpad:
 
   internal wiring:
 
-    VCC-*-Ru----------+--+---+
-            +-Rm------+  |   |
-    C0--*---+           ^Dz  *--Keypad_1(+)
-            +-C_pinp--+  |
-    GND-*-Rd----------+--+---*--Keypad_2(-)
+    VCC-*-Ru------------+--+---+
+              +-Rm------+  |   |
+    C0--*-----+           ^Dz  *--Keypad_1(+)
+              +-C_pinp--+  |
+    GND-*-Rd------------+--+---*--Keypad_2(-)
 
     Ru     = 10k
     Rd     = 1k
@@ -38,6 +38,20 @@ cable
 yellow ===========================================
 cable
 
+Door_Switch--C2
+Lock_Switch--C3
+(TODO: low-pass filter these:
+
+  Door_Switch Lock_Switch
+       |          |
+      R_sw       R_sw
+       |          |
+   C2--+      C3--+
+       |          |
+      C_sw       C_sw
+       |          |
+  GND--+----------+
+)
 
 B5---onboard LED circuit--GND
 
@@ -61,4 +75,6 @@ R_sense = 1.5 MOhm
 C_sense = 0.47 uF
 C_vcc = 470 uF
 
+R_sw = 10 kOhm
+C_sw = 0.47 uF
 
