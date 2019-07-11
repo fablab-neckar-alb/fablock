@@ -1,1 +1,1 @@
-../include/pinpad.h
+include/pinpad.h
