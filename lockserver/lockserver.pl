@@ -516,7 +516,7 @@ my %request_handlers = (
   state => sub {
     my ($from,$request) = @_;
     #my $param = $request->{param};
-    my $datagram = "state "join(" ",@door_state);
+    my $datagram = "state ".join(" ",@door_state);
     my $res = eval { $server->send($datagram,0,$from); };
     if (!$res) {
       log_warning("Could not respond to a state request.");
