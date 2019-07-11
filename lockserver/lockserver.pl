@@ -181,8 +181,8 @@ package Cron {
   # in O(log(n)) or so, but in reality we don't have that many tasks anyway,
   # so we just lazily use a hash and a sorted list and even just sort the
   # list with "sort" everytime we make an insertion.
-  my ($class) = @_;
   sub new {
+    my ($class) = @_;
     return bless {events=>{},table=>[]}, ref $class || $class;
   }
 
