@@ -459,7 +459,7 @@ sub setup {
 # commands are forwarded directly to the device
 my $valid_command = qr/^![a-zA-Z0-9].*$/;
 # requests are directly processed from this script.
-my $valid_request = qr/^\.(?<name>register|unregister|baudrate|close)(?<param>(?: \w+)*)$/;
+my $valid_request = qr/^\.(?<name>register|unregister|baudrate|close|open|pinentry|state)(?<param>(?: \w+)*)$/;
 
 my @default_wants = qw(W R);
 
@@ -499,9 +499,30 @@ my %request_handlers = (
     sleep 1;
     send_dev("!0\n");
   },
+  open => sub {
+    send_dev("!D1\n");
+  },
   close => sub {
     send_dev("!D0\n");
-  }
+  },
+  pinentry => sub {
+    my ($from,$request) = @_;
+    my $param = $request->{param};
+    $param =~ s/^\s*//;
+    $param =~ s/\s*$//;
+    return if $param =~ /[^0-9]/;
+    handle_pinentry($param);
+  },
+  state => sub {
+    my ($from,$request) = @_;
+    #my $param = $request->{param};
+    my $datagram = "state "join(" ",@door_state);
+    my $res = eval { $server->send($datagram,0,$from); };
+    if (!$res) {
+      log_warning("Could not respond to a state request.");
+    }
+    return $res;
+  },
 );
 
 # right now, everything is just piped into the device.
