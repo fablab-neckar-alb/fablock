@@ -2,15 +2,15 @@ pinpad:
 
   external wiring:
 
-    *===*
+    *===* (pin header)
     |   | 
     |   +-------------------+
     |                       | 
-    *=R2'=*=R3'=*=R4'===Rn'=* (connector)
+    *=R2'=*=R3'=*=R4'===Rn'=* (female header / connector)
 
     Ri' = (0, 1k, 1.2k, 1.5k, 1.8k, 4.7k/2, 3.3k, 4.7k, 6.8k, 10k, 22k, 68k)
 
-  internal wiring:
+  internal wiring (4x3 daughter board):
 
     VCC-*-Ru------------+--+---+
               +-Rm------+  |   |
@@ -22,8 +22,20 @@ pinpad:
     Rd     = 1k
     Rm     = 10k
     C_pinp = 2*220nF
-    Dz     = 12V zener diode,
+    Dz     = 12V zener diode (better: 5.6V zener diode (TODO)),
     (everything in SMD parts except for Dz).
+
+            +----+----+----+----+
+            | *  |              |
+            |GND Rd      Dz     |
+            +----+----+-||-+----+
+            | *       |      *  |
+            |C0     C_pinp   K- |
+            +----+-Rm-+----+----+
+            | *  |       Dz  *  |
+            |VCC Ru          K+ |
+            +----+----+----+----+
+
 
 main:
 
@@ -46,13 +58,16 @@ Door_Switch Lock_Switch
      |          |
 GND--+----------+
 
-B5---onboard LED circuit--GND
+// B5---onboard LED circuit--GND
 
 VCC---+--------------+
+      |              |
       R_motor        C_sense
+      |              |
       +----R_sense---+--------SENSE(C7)
       |
-      servo----servo_pwm(C0)
+      servo-------------------servo_pwm(C0)
+      |
 GND---+
 
 C5----speaker---GND
