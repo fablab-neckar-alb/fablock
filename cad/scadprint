@@ -1,0 +1,250 @@
+#!/usr/bin/perl
+
+# Copyright (c) 2015-2019 by Thomas Kremer
+# License: GNU GPL ver. 2 or 3
+
+use strict;
+use warnings;
+use File::Spec;
+
+# usage:
+#   $0 <file.scad>
+#  or
+#   $0 <file.scad> foo-part BER flatstuff
+# where file.scad contains a parts list like this:
+#   /* PARTS LIST:
+#      foo-part: cube(1);
+#      bar-part(2): rotate([0,0,10]) cylinder(r=1,h=1);
+#      BER(0): my_BER_module();
+#      flatstuff.dxf(2): union() { square(); circle(); }
+#   */
+#
+# TODO: test:
+# or a parts list like this (part() and demo() are defined in utilities.scad):
+#  /* PARTS LIST: [foo-part,bar-part(2),BER(0),flatstuff.dxf(2)] */
+#  part("foo-part") cube(1);
+#  part("BER") my_BER_module();
+#  demo() { rotate([180,0,0]) my_BER_module(); cube(1); }
+#
+# The start and end comment lines are verbatim markers, the lines each state a
+#  part name, an optional count of equal parts needed and the command that
+#  generates the part, all in one line. The currently built part can be
+# accessed in the "currently_built_part" variable as a string.
+# All parts are converted to STL in file/<part-name>.stl. A list of counts is
+# written to file/counts.txt.
+# TODO: Do we need an option to convert to gcode directly?
+#       What tool should we use?
+
+my $file = shift // "";
+my @needed = @ARGV;
+#$ARGV[0] // "";
+if (! -f $file) {
+  die "file \"$file\" is not a regular file. Pipes are not supported (yet).";
+}
+my $basename = $file;
+$basename =~ s/\.scad$//;# || $basename = "noname";
+my $dest = $basename."-stl";
+my $tempfile = $dest.".tmp";
+
+if (-e $dest && ! -d $dest) {
+  die "destination \"$dest\" exists and is not a directory!";
+}
+
+open (my $f,"<",$file) or die "cannot open \"$file\"";
+
+my $seen_marker = 0;
+my @parts;
+my @lines = <$f>;
+#while (<$f>) {
+for (@lines) {
+  next if /^\s*+$/;
+  if (!$seen_marker) {
+    if (m{^\s*+/\*\s*+PARTS LIST:\s*+$}) {
+      $seen_marker = 1;
+    }
+    if (m{^\s*+/\*\s*+PARTS LIST:\s*+\[([^][])\]\s*+\*/\s*+$}) {
+      $seen_marker = 1;
+      my @specs = split /,/,$1;
+      for (@specs) {
+        if (/^\s*+([-\w]++)(?:\.(\w+))?\s*+(?:\((\d+)\))?\s*+$/) {
+          # actually we can let this be a special case of the old parts list, where every part has an empty command block. (Though some of the handling is probably unneccessary now)
+          my $part = {
+            name => $1,
+            count => $3//1,
+            command => "",
+            type => $2//"stl"
+          };
+          push @parts, $part;
+        } else {
+          die "invalid element in parts list: \"$_\"";
+        }
+      }
+
+      last;
+    }
+  } elsif (m{^\s*+\*/\s*+$}) {
+    last;
+  } elsif (/^\s*+([-\w]++)(?:\.(\w+))?\s*+(?:\((\d+)\))?\s*+:(.*)$/) {
+    my $part = {
+      name => $1,
+      count => $3//1,
+      command => $4,
+      type => $2//"stl"
+    };
+    push @parts, $part;
+  } else {
+    die "invalid line in parts list: \"$_\"";
+  }
+}
+close($f);
+if (!$seen_marker) {
+  @parts = ({name => "all", type => "stl", count => 1, command => ""});
+}
+
+my @extmods = ();
+my $extmod = undef;
+for my $i (0..$#lines) {
+  local $_ = $lines[$i];
+  next if /^\s*+$/;
+  if (!defined $extmod) {
+    if (m{^\s*+//\s*+EXTERN MODULE (\w+) TYPE (\w+)\s*+$}) {
+      $extmod = {name => $1,type => $2, start => $i};
+    }
+  } elsif (m{^//\s*+END EXTERN MODULE\s*+$}) {
+    $extmod->{end} = $i;
+    push @extmods, $extmod;
+    $extmod = undef;
+  }
+}
+
+sub filltemp {
+  my $lines = shift;
+  open(my $f, ">", $tempfile) or die "cannot write \"$tempfile\": $!";
+  for (@$lines) {
+    print $f $_;
+  }
+  close($f);
+}
+
+sub str_lit {
+  my $s = shift;
+  $s =~ s/(["\\])/\\$1/g;
+  return "\"".$s."\"";
+}
+
+mkdir $dest;
+
+my %ext_cmds = (
+  splinecyl => sub {
+    my ($file,@args) = @_;
+    my $pid = fork();
+    die "cannot fork" unless defined $pid;
+    if (!$pid) {
+      open(STDOUT,">",$file);
+      my @cmd = (qw(./mksplinecyl.pl 40 stl),@args);
+      print STDERR "CMD ".join(" ",map "<$_>", @cmd)."\n";
+      exec(@cmd) or die "cannot exec";
+    }
+    waitpid($pid,0);
+    return $? == 0;
+  }
+);
+
+# we evaluate name(); at the point of the definition to get the echo()ed args.
+# then we use that as input to the corresponding external command to create
+# the stl file. Then we replace the definition with an import(file);
+# we need a temp file in the same directory to parse the file as-is with includes.
+for (@extmods) {
+  my ($name,$type,$start,$end) = @$_{qw(name type start end)};
+  my $file = $dest."/auto-".$type."-".$name.".stl";
+  if (!-e $file) {
+    my @args = ();
+    my $cmd = $ext_cmds{$type};
+    die "no such type: \"".$type."\"" unless defined $cmd;
+
+    my $scad = "currently_built_part=".str_lit($name).";\n$name();\n";
+    filltemp([@lines[0..$end],$scad]);
+    # $tempfile contains anything needed to echo() the args.
+
+    # documented output type "null" is actually not supported.
+    my $chld = open(my $f,"-|","-");
+    die "cannot fork" unless defined $chld;
+    if (!$chld) {
+      open(STDERR,">&",\*STDOUT) or die "cannot dup stdout: $!";
+      exec(qw(openscad -o),$tempfile.".png",$tempfile) or die "cannot exec";
+    }
+    local $/ = undef;
+    my $output = <$f>;
+    $output =~ /^ECHO: "extern module $name: (.*)"$/m or die "broken external module $name: \"$output\"";
+    @args = ($1);
+
+    # generate the replacement stl file.
+    $cmd->($file,@args);
+    
+    unlink($tempfile);
+    unlink($tempfile.".png");
+  }
+  my $subst = "module $name() import(".str_lit($file).");\n";
+  $lines[$start] = $subst;
+  $lines[$_] = "" for $start+1..$end;
+}
+
+filltemp(\@lines);
+
+my $counts = join("",map $_->{name}." ".$_->{count}."\n", @parts);
+open($f,">",$dest."/counts.txt") or die "cannot open counts for writing: $!";
+print $f $counts or die "cannot write to counts: $!";
+close($f);
+
+#my $file_literal = "\"".($file =~ s/(["\\])/\\$1/srg)."\""; # FIXME
+my $file_literal = "<".File::Spec->rel2abs($tempfile).">"; # FIXME FIXME
+
+if (@needed) {
+  my %parts;
+  $parts{$_->{name}} = $_ for @parts;
+  for (@needed) {
+    die "part \"$_\" not found" if !exists $parts{$_};
+  }
+  @parts = @parts{@needed};
+}
+
+my $allstarttime = time;
+
+for (@parts) {
+  my $name = $_->{name};
+  my $type = $_->{type};
+  my $destfile = $dest."/".$name.".".$type;
+  my $command = $_->{command};
+#  my $scad = "include $file_literal;\ncurrently_built_part=\"$name\";\n$command\n";
+  my $scad = "currently_built_part=\"$name\";\n$command\n";
+  
+  filltemp([@lines,$scad]);
+
+  #my @cmdline = ("./debug.pl","openscad","-o",$destfile,"/dev/stdin");
+  my @cmdline = (qw(openscad -o),$destfile,$tempfile); #"/dev/stdin");
+
+  print "doing part \"$name\" ($type)...\n";
+  my $starttime = time;
+
+  my $res = system(@cmdline);
+  if (!defined $res) {
+    die "cannot exec openscad: $!";
+  }
+  if ($res != 0) {
+    print STDERR "openscad failed, res=$res\n";
+  }
+#  my $pid = open($f,"|-",@cmdline);
+#  if (!$pid) {
+#    die "cannot exec openscad: $!";
+#  }
+#  print $f $scad;
+#  close($f);
+# FIXED: do we have to wait for the process or is it guaranteed to be finished after the close()? -- No.
+  my $duration = time-$starttime;
+  printf "part \"%s\" took %d:%02d min/sec.\n", $name, $duration/60, $duration%60;
+}
+my $duration = time-$allstarttime;
+printf "done (total %d:%02d).\n", $duration/60, $duration%60;
+
+unlink($tempfile);
+

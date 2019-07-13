@@ -1,5 +1,8 @@
 #!/usr/bin/perl
 
+# Copyright (c) 2019 by Thomas Kremer
+# License: GNU GPL ver. 2 or 3
+
 use strict;
 use warnings;
 

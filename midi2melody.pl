@@ -1,5 +1,8 @@
 #!/usr/bin/perl
 
+# Copyright (c) 2019 by Thomas Kremer
+# License: GNU GPL ver. 2 or 3
+
 # usage: midi2melody.pl some/midifile.mid [<cname>|] [<unit>] > c_header.h
 #     converts a midi file to a C header, defining <cname> as a melody, using
 #     <unit>th notes as a base metric.
