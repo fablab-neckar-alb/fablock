@@ -240,11 +240,12 @@ void door_init() {
 
 void EVENT_door_locked(bool success);
 void EVENT_door_unlocked(bool success);
+void EVENT_door_mode_changed(uint8_t old_mode);
 
 void door_lock();
 
 void door_enter_mode(uint8_t mode) {
-  //uint8_t old_mode = door_mode;
+  uint8_t old_mode = door_mode;
   door_mode = mode;
   door_set_motor(mode);
   uint8_t mask = (1 << DOOR_MOTOR_SENSE_PIN);
@@ -257,6 +258,7 @@ void door_enter_mode(uint8_t mode) {
       DOOR_MOTOR_SENSE_VOLTAGE_STALL,DOOR_MOTOR_SENSE_VOLTAGE_RUNNING);
     adc_watch_set_mask(adcw_state.mask | mask);
   }
+  EVENT_door_mode_changed(old_mode);
 }
 
 void EVENT_door_motor_failing(uint8_t);
@@ -407,6 +409,8 @@ void door_sensor_changed() {
     enqueue_event_rel(DOOR_CLOSELOCKTIME,&door_lock_event,(void*)1);
 */
     door_schedule_locking(DOOR_CLOSELOCKTIME);
+  } else {
+    door_enter_mode(0);
   }
 }
 

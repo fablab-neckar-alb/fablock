@@ -850,6 +850,10 @@ void EVENT_door_unlocked(bool success) {
   print_door_feedback(2,success?1:0);
 }
 
+void EVENT_door_mode_changed(uint8_t old_mode) {
+  dequeue_events(&report_state_event);
+  enqueue_event_rel(DOOR_REPORT_DELAY,&report_state_event,NULL);
+}
 
 /*
   gameboy project pins:
