@@ -374,7 +374,8 @@ void door_lock_event(void* param) {
       EVENT_door_unlocked(!door_is_locked());
   } else if (param == (void*)1) {
     // retry.
-    door_lock();
+    if (door_is_closed())
+      door_lock();
   }
 }
 

@@ -722,8 +722,8 @@ void process_pinpad_line() {
     switch (pinpad_inbuf[0]) {
       // code to just lock the door: *0#
       case '0' :
-        //door_lock();
-        door_schedule_locking(sec2ticks(2,TIMER_DIV));
+        door_lock();
+        //door_schedule_locking(sec2ticks(2,TIMER_DIV));
         return;
 #ifdef ENABLE_EASTEREGGS
       // code to start music: *1#
