@@ -125,6 +125,8 @@ my %listeners;
 my $listener_lifetime = 3600;
 my $idle_polltime = 60;
 my $dev_idle_timeout = 2*$idle_polltime;
+my $idle_awake_cycles;
+my $resettable_awake_cycles = 2;
 
 
 ##### log functions #####
@@ -388,6 +390,7 @@ sub setup_device {
   $dev_bad_input = 0;
   $dev_last_input = time;
   @door_state = (0,0,0,2);
+  $idle_awake_cycles = 0;
   schedule_device_ping();
   send_dev("!d\n");
 }
@@ -645,12 +648,20 @@ my %device_handlers = (
   PIN => sub {
     my ($msg) = @_;
     my $pin = $msg->{param};
+    $idle_awake_cycles = 0;
     handle_pinentry($pin);
   },
   AWAKE => sub {
     my ($msg) = @_;
     my $param = $msg->{param};
     log_notice("Device ".($param?"awake":"sleeping"));
+    if (!$param) {
+      $idle_awake_cycles++;
+    }
+    if ($idle_awake_cycles >= $resettable_awake_cycles) {
+      log_warning("resetting device (awake-cycles suggest hardware failure)");
+      reset_device();
+    }
   },
   DOOR => sub {
     my ($msg) = @_;
@@ -741,6 +752,7 @@ sub run {
     my $time = time;
     my $next_cron = $cron->get_next_time; #($time+$idle_polltime);
     my $polltime = (defined($next_cron) && $next_cron < $time+$idle_polltime) ? $next_cron-$time : $idle_polltime;
+    $polltime = 0 if $polltime < 0;
     my @ready = $sel->can_read($polltime);
     my $n_cron = $cron->execute;
     if (!@ready && !$n_cron) {
