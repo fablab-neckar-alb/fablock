@@ -433,10 +433,8 @@ void pinpad_sleep_event(void* param) {
 }
 
 void pinpad_be_used() {
-  // FIXME: pinpad just stops reading adc sometimes.
-  //        for now, we remove the sleep mode for debugging.
-  //dequeue_events(&pinpad_sleep_event);
-  //enqueue_event_rel(pinpad_timeout,&pinpad_sleep_event,(void*)0);
+  dequeue_events(&pinpad_sleep_event);
+  enqueue_event_rel(pinpad_timeout,&pinpad_sleep_event,(void*)0);
 }
 
 void print_door_feedback(uint8_t mode, uint8_t success) {
