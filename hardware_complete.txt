@@ -12,11 +12,15 @@ pinpad:
 
   internal wiring (4x3 daughter board):
 
-    VCC-*-Ru------------+--+---+
-              +-Rm------+  |   |
-    C0--*-----+           ^Dz  *--Keypad_1(+)
-              +-C_pinp--+  |
-    GND-*-Rd------------+--+---*--Keypad_2(-)
+    VCC-----*-Ru---+------+---+
+                   |      |   |
+                   Rm     |   |
+                   |      |   |
+    Pin_C4--*------+     ^Dz  *--Keypad_1(+)
+                   |      |
+                   C_pinp |
+                   |      |
+    GND-----*-Rd---+------+---*--Keypad_2(-)
 
     Ru     = 10k
     Rd     = 1k
@@ -30,7 +34,7 @@ pinpad:
             |GND Rd      Dz     |
             +----+----+-||-+----+
             | *       |      *  |
-            |C0     C_pinp   K- |
+            |P_C4   C_pinp   K- |
             +----+-Rm-+----+----+
             | *  |       Dz  *  |
             |VCC Ru          K+ |
@@ -64,9 +68,9 @@ VCC---+--------------+
       |              |
       R_motor        C_sense
       |              |
-      +----R_sense---+--------SENSE(C7)
+  VDD-+----R_sense---+--------SENSE(C7)
       |
-      servo-------------------servo_pwm(C0)
+      Motor-------------------servo_pwm(C0)
       |
 GND---+
 
