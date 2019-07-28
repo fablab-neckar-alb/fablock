@@ -392,7 +392,7 @@ sub setup_device {
   @door_state = (0,0,0,2);
   $idle_awake_cycles = 0;
   schedule_device_ping();
-  send_dev("!d\n");
+  send_dev("!T\n!d\n");
 }
 
 sub reset_device {
@@ -462,7 +462,7 @@ sub setup {
 # commands are forwarded directly to the device
 my $valid_command = qr/^![a-zA-Z0-9].*$/;
 # requests are directly processed from this script.
-my $valid_request = qr/^\.(?<name>register|unregister|baudrate|close|open|pinentry|state)(?<param>(?: \w+)*)$/;
+my $valid_request = qr/^\.(?<name>register|unregister|baudrate|close|open|pinentry|state|reset_device)(?<param>(?: \w+)*)$/;
 
 my @default_wants = qw(W R);
 
@@ -525,6 +525,9 @@ my %request_handlers = (
       log_warning("Could not respond to a state request.");
     }
     return $res;
+  },
+  reset_device => sub {
+    reset_device();
   },
 );
 
@@ -637,7 +640,7 @@ sub handle_pinentry {
 }
 
 # leaving out: "!G%d %d" (!G response), P%d (pinpad debug)
-my $valid_devline = qr/^(?:(?<name>!ECHO OFF|OK\.|VERSION 3)|(?<name>PIN|DOOR|AWAKE|SENSE|MFAIL|r[012])=(?<param>.*))$/;
+my $valid_devline = qr/^(?:(?<name>!ECHO OFF|OK\.|VERSION 3)|(?<name>PIN|DOOR|AWAKE|SENSE|MFAIL|r[012]|TIME)=(?<param>.*))$/;
 
 my %device_handlers = (
   "!ECHO OFF" => sub {
@@ -696,6 +699,12 @@ my %device_handlers = (
     } else {
       log_warning("invalid mfail parameter \"$param\"");
     }
+  },
+  TIME => sub {
+    my ($msg) = @_;
+    my $param = $msg->{param};
+    my $t = hex($param);
+    log_debug("device time is $t");
   },
 # r0,r1,r2
 );
