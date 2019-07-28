@@ -141,22 +141,22 @@ sub do_log {
 
 sub log_debug {
   do_log("D: ",@_) if $opts{debug};
-  send_listeners("log_debug",$line);
+  send_listeners("log_debug",join(" ",@_));
 }
 
 sub log_notice {
   do_log("N: ",@_);
-  send_listeners("log_notice",$line);
+  send_listeners("log_notice",join(" ",@_));
 }
 
 sub log_warning {
   do_log("W: ",@_);
-  send_listeners("log_warning",$line);
+  send_listeners("log_warning",join(" ",@_));
 }
 
 sub log_error {
   do_log("E: ",@_);
-  send_listeners("log_error",$line);
+  send_listeners("log_error",join(" ",@_));
 }
 
 sub setup_log {
@@ -399,7 +399,9 @@ sub setup_device {
   @door_state = (0,0,0,2);
   $idle_awake_cycles = 0;
   schedule_device_ping();
-  sleep(2);
+  #$cron->schedule(time+2,"device_init",sub{send_dev("!T\n!d\n")});
+  sleep(2); # wait for the device to accept input. After this function returns, we want the device to be ready for commands, so we sleep synchronously.
+  # TODO: why does it more than a second to boot?
   send_dev("!T\n!d\n");
 }
 
