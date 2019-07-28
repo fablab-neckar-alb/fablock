@@ -469,7 +469,7 @@ uint8_t recent_pins[3] = {0,0,0};
 
 void EVENT_Interrupt(uint8_t port, uint8_t pins) {
   // fill the entropy into the random buffer:
-  int32_t time = get_time();
+  uint32_t time = get_time();
   prng_write_byte(time & 0xff);
 
   uint8_t changedpins = pins ^ recent_pins[port];
@@ -684,6 +684,16 @@ void process_line() {
           // beep with frequency <param> for half a second.
           uint16_t freq = hex2int(param);
           beep(freq,500);
+        }
+        break;
+      case 'T': {
+          // Get (up-)time. Use to verify that a reset has been done.
+          uint32_t time = get_time();
+          usart_msg("TIME=");
+          char msg[9];
+          inttohex(time,msg,8);
+          usart_write(msg,8);
+          usart_writechar('\n');
         }
         break;
       case 'z':
