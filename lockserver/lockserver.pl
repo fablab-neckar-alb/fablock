@@ -141,18 +141,22 @@ sub do_log {
 
 sub log_debug {
   do_log("D: ",@_) if $opts{debug};
+  send_listeners("log_debug",$line);
 }
 
 sub log_notice {
   do_log("N: ",@_);
+  send_listeners("log_notice",$line);
 }
 
 sub log_warning {
   do_log("W: ",@_);
+  send_listeners("log_warning",$line);
 }
 
 sub log_error {
   do_log("E: ",@_);
+  send_listeners("log_error",$line);
 }
 
 sub setup_log {
@@ -321,7 +325,7 @@ sub prune_listeners {
 sub send_listeners {
   my ($type,$content) = @_;
   my $time = time;
-  my @bad;
+  my (@bad,@errs);
   my $datagram = $type." ".$content;
   for (keys %listeners) {
     my $addr = $listeners{$_}{addr};
@@ -330,14 +334,17 @@ sub send_listeners {
     my $res = undef;
     $res = eval { $server->send($datagram,0,$addr); };
     if (!defined $res) {
-      log_notice("dropping listener: $@.");
       # Error. Remove.
       push @bad, $_;
+      push @errs, $@;
     } else {
       $listeners{$_}{time} = $time;
     }
   }
-  delete @listeners{@bad} if @bad;
+  if (@bad) {
+    delete @listeners{@bad};
+    log_notice("dropping listener: $_.") for @errs;
+  }
 }
 
 ##### device functions #####
@@ -370,8 +377,8 @@ sub set_baudrate {
 sub setup_device {
   #$tty = do { no warnings "once"; \*GEN0 };
   $baudrate = $initial_baudrate;
-  # baudrate, 8 data bits, 1 stop bit, no parity, raw mode, ignore break chars, disable modem control signals, disable on-POSIX special chars
-  system("stty","-F",$ttyfile,$baudrate,qw(cs8 -cstopb -parenb raw -echo ignbrk clocal -iexten)) == 0
+  # baudrate, 8 data bits, 1 stop bit, no parity, raw mode, ignore break chars, disable modem control signals, disable on-POSIX special chars, send hangup at close (=DTR-reset the arduino)
+  system("stty","-F",$ttyfile,$baudrate,qw(cs8 -cstopb -parenb raw -echo ignbrk clocal -iexten hup)) == 0
     or die "cannot stty $ttyfile to initial settings";
   open($tty,"+<",$ttyfile) or die "cannot open tty $ttyfile: $!";
 
@@ -392,6 +399,7 @@ sub setup_device {
   @door_state = (0,0,0,2);
   $idle_awake_cycles = 0;
   schedule_device_ping();
+  sleep(2);
   send_dev("!T\n!d\n");
 }
 
@@ -527,6 +535,7 @@ my %request_handlers = (
     return $res;
   },
   reset_device => sub {
+    log_notice("resetting device (upon user request)");
     reset_device();
   },
 );
