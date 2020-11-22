@@ -20,9 +20,9 @@
 #include <stdbool.h>
 #include <math.h>
 
-#include "timers.h"
+#include <timers.h>
 #define EVENT_QUEUE_SIZE 8
-#include "events.c.h"
+#include <events.c.h>
   
 #define TIMER_DIV 1
 #define TIMER_SCALE TIMER_SCALE_1
@@ -59,18 +59,18 @@ eepromfs_index_t eep_index;
 #define ATTR_ALWAYS_INLINE __attribute__((always_inline))
 
 #define outbuf_size 80
-#include "usart.h"
+#include <usart.h>
 
 //#define ADCW_READ_COUNT (1 << 6)
 #define ADCW_READ_COUNT (1 << 5)
 
-#include "adc.h"
-#include "adc_watch.h"
+#include <adc.h>
+#include <adc_watch.h>
 //#include "spi.h"
 #include "prng.h"
 
 #ifdef DEBUG_DISPLAY
-#include "pcd8544_display.h"
+#include <pcd8544_display.h>
 #include "testfont.h"
 #endif
 
@@ -92,7 +92,7 @@ eepromfs_index_t eep_index;
 //#include "softosc.h"
 
 #define PINPAD_PIN 4
-#include "pinpad.h"
+#include <pinpad.h>
 
 // with the gameboy hardware, we get a little low on free pins...
 // thankfully that hardware does not otherwise use Port C...
