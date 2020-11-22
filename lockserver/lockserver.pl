@@ -513,9 +513,21 @@ my %request_handlers = (
     send_dev("!0\n");
   },
   open => sub {
+    my ($from,$request) = @_;
+    my $param = $request->{param};
+    $param =~ s/^\s*//;
+    $param =~ s/\s*$//;
+    $param = "unknown" if $param eq "";
+    log_notice("open request by $param");
     send_dev("!D1\n");
   },
   close => sub {
+    my ($from,$request) = @_;
+    my $param = $request->{param};
+    $param =~ s/^\s*//;
+    $param =~ s/\s*$//;
+    $param = "unknown" if $param eq "";
+    log_notice("close request by $param");
     send_dev("!D0\n");
   },
   pinentry => sub {
@@ -524,7 +536,7 @@ my %request_handlers = (
     $param =~ s/^\s*//;
     $param =~ s/\s*$//;
     return if $param =~ /[^0-9]/;
-    handle_pinentry($param);
+    handle_pinentry($param,"socket");
   },
   state => sub {
     my ($from,$request) = @_;
@@ -627,8 +639,8 @@ sub verify_pin {
 }
 
 sub handle_pinentry {
-  my $pin = shift;
-  log_notice("A pin has been entered.");
+  my ($pin,$source) = @_;
+  log_notice("A pin has been entered from $source.");
   my $special = $special_pins{$pin};
   if (defined $special) {
     $special->($pin);
@@ -663,7 +675,7 @@ my %device_handlers = (
     my ($msg) = @_;
     my $pin = $msg->{param};
     $idle_awake_cycles = 0;
-    handle_pinentry($pin);
+    handle_pinentry($pin,"device");
   },
   AWAKE => sub {
     my ($msg) = @_;
