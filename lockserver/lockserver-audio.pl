@@ -83,6 +83,8 @@ while ($running) {
           }
         } elsif (!$locked && $closed && !$prev_closed) {
           if ($state == 0) {
+            # wait for motor to start, so the user has hardware feedback.
+            sleep(3);
             play_sound("post_bye");
           } else {
             play_sound("post_greetings");
