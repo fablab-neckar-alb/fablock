@@ -26,17 +26,30 @@ sub play_sound {
 }
 
 my $ux_path = "/run/lockserver.sock";
+my $sock;
+my $register_interval = 1800;
+my $register_time = time+$register_interval;
+my $registered = 0;
 
-my $sock = IO::Socket::UNIX->new(Type => SOCK_DGRAM, Local => "", Peer => $ux_path);
+sub do_connect {
+  $sock = IO::Socket::UNIX->new(Type => SOCK_DGRAM, Local => "", Peer => $ux_path);
+  return 0 unless $sock;
+  $register_interval = 30;
+  $registered = 0;
+  $sock->send(".state"); # check for answer.
+  $sock->send(".register log_notice");
+  $register_time = time+$register_interval;
+  return 1;
+}
 
-$sock->send(".register log_notice");
-my $register_time = time+1800;
+do_connect();
 
 my $buffer = "";
 my $running = 1;
 
 $SIG{INT} = sub { $running = 0; };
 $SIG{CHLD} = "IGNORE";
+$SIG{HUP} = \&do_connect;
 
 my $sel = IO::Select->new($sock);
 
@@ -46,9 +59,12 @@ my @lockstate = ("","","","");
 while ($running) {
   my $delta = $register_time-time;
   if ($delta <= 0) {
+    if (!$registered) {
+      $sock->send(".state");
+    }
     $sock->send(".register log_notice");
-    $register_time = time+1800;
-    $delta = 1800;
+    $register_time = time+$register_interval;
+    $delta = $register_interval;
   }
   if ($sel->can_read($delta+10)) {
     my $from = $sock->recv($buffer,8192);
@@ -96,6 +112,16 @@ while ($running) {
       play_sound("access_denied");
     } elsif ($buffer =~ /^log_notice User \S+ verified by PIN\.$/) {
       play_sound("access_granted");
+    } elsif ($buffer =~ /^log_notice state /) {
+      # we know now that the registration was received.
+      $registered = 1;
+      $register_interval = 1800;
+    } elsif ($buffer =~ /^log_notice exit with code /) {
+      # DONE: reconnect, re-register, check connection.
+      sleep(3);
+      while (!do_connect()) {
+        sleep(1);
+      }
     }
   }
 #  /A pin has been entered\./
