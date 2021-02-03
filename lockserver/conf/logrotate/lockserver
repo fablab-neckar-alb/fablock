@@ -1,0 +1,13 @@
+/var/log/lockserver.log {
+  rotate 12
+  monthly
+  compress
+  missingok
+  nocreate
+  shred
+  shredcycles 4
+  su root root
+  postrotate
+    start-stop-daemon --stop --oknodo --signal 1 --quiet --pidfile /run/lockserver.pid
+  endscript
+}

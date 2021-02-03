@@ -1,0 +1,13 @@
+[Unit]
+Description=Lockserver
+Documentation=https://github.com/tkremer/fablock
+After=remote-fs.target
+
+[Service]
+PermissionsStartOnly=true
+ExecStart=/usr/local/bin/lockserver.pl --sock /run/lockserver.sock --group www-data --logfile /var/log/lockserver.log --passwdfile /var/local/lib/schluessel/pins.shadow --pidfile /run/lockserver.pid --debug
+Type=simple
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
