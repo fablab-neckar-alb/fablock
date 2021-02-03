@@ -169,7 +169,12 @@ sub setup_log {
     undef $log;
   }
   #$stdout = $use_stdio ? \*STDOUT : $log;
-  log_notice("daemon started.");
+}
+
+sub reopen_log {
+  log_debug("reopening logfile...");
+  setup_log();
+  log_debug("logfile opened.");
 }
 
 #BEGIN {
@@ -455,6 +460,7 @@ sub setup_stdio {
 sub setup {
   $cron = Cron->new;
   setup_log();
+  log_notice("daemon started.");
   setup_server();
   setup_device();
   setup_stdio();
@@ -778,6 +784,7 @@ sub run {
   $running = 1;
   local $SIG{INT} = sub { $running = 0; };
   local $SIG{TERM} = sub { $running = 0; };
+  local $SIG{HUP} = \&reopen_log;
   my $ret = 0;
 
   while ($running) {
