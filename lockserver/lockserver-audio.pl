@@ -7,8 +7,15 @@ use warnings;
 
 use IO::Select;
 use IO::Socket::UNIX;
+use Socket ();
 
 $ENV{ALSA_CARD} = "USB";
+
+# perls Socket functions don't understand Linux's autobind feature.
+my $sockaddr_un_auto = substr(pack_sockaddr_un("\0a"),0,-2);
+sub IO::Socket::UNIX::autobind {
+  $_[0]->bind($sockaddr_un_auto);
+}
 
 sub play_sound {
   my $name = shift;
@@ -32,8 +39,9 @@ my $register_time = time+$register_interval;
 my $registered = 0;
 
 sub do_connect {
-  $sock = IO::Socket::UNIX->new(Type => SOCK_DGRAM, Local => "", Peer => $ux_path);
+  $sock = IO::Socket::UNIX->new(Type => SOCK_DGRAM, Peer => $ux_path);
   return 0 unless $sock;
+  $sock->autobind or return 0;
   $register_interval = 30;
   $registered = 0;
   $sock->send(".state"); # check for answer.
