@@ -82,7 +82,7 @@
 #define DOOR_MINLOCKTIME msec2ticks(2000,TIMER_DIV)
 //#define DOOR_MAXLOCKTIME msec2ticks(6000,TIMER_DIV)
 #define DOOR_MAXLOCKTIME msec2ticks(4*6000,TIMER_DIV)
-#define DOOR_OVERLOCKTIME msec2ticks(4000,TIMER_DIV)
+#define DOOR_OVERLOCKTIME msec2ticks(2000,TIMER_DIV)
 #define DOOR_MINUNLOCKTIME msec2ticks(2000,TIMER_DIV)
 //#define DOOR_MAXUNLOCKTIME msec2ticks(6000,TIMER_DIV)
 #define DOOR_MAXUNLOCKTIME msec2ticks(4*6000,TIMER_DIV)
@@ -108,18 +108,18 @@
 
 // estimated by measuring with MC:
 // grep -a "^ *[0-9]\+$" stalling.txt | sort -n | uniq -c
-#define DOOR_MOTOR_SENSE_VOLTAGE_RUNNING 930
-#define DOOR_MOTOR_SENSE_VOLTAGE_STALL 700
+#define DOOR_MOTOR_SENSE_VOLTAGE_RUNNING 570
+#define DOOR_MOTOR_SENSE_VOLTAGE_STALL 512
 #define DOOR_MOTOR_SENSE_FUZZ 10
 //((int16_t)(0.2*1024/5))
 uint8_t door_mode = 0;
 
 bool door_is_locked() {
-  return CONCAT(PIN,DOOR_BOLTSENSOR_PORT) & (1 << DOOR_BOLTSENSOR_PIN);
+  return !(CONCAT(PIN,DOOR_BOLTSENSOR_PORT) & (1 << DOOR_BOLTSENSOR_PIN));
 }
 
 bool door_is_closed() {
-  return CONCAT(PIN,DOOR_SENSOR_PORT) & (1 << DOOR_SENSOR_PIN);
+  return !(CONCAT(PIN,DOOR_SENSOR_PORT) & (1 << DOOR_SENSOR_PIN));
 }
 
 /*
