@@ -111,14 +111,17 @@ void init() {
 // FIXME: replace ideal values by proper ranges.
 //    OR: replace values by linear approximation, saving memory.
 const int16_t pinpad_adc_values[12] PROGMEM =
-  {93, 171, 248, 327, 403, 481, 562, 643, 720, 789, 868, 947};
+  //{93, 171, 248, 327, 403, 481, 562, 643, 720, 789, 868, 947};
+  {93, 170, 236, 292, 371,   410, 445, 476, 522, 545, 566, 586};
 const char pinpad_chars[12] PROGMEM =
-  {'*', '7', '1', '4', '0', '8', '5', '2', '#', '9', '6', '3'};
+  //{'*', '7', '1', '4', '0', '8', '5', '2', '#', '9', '6', '3'};
+  {'*', '7', '4', '1', '0', '8',   '5', '2', '#', '9', '6', '3'};
+
 //const int16_t pinpad_fuzz = 93/3;
 // idea: voltage space between k and k+1 is 1/3 for k, 1/3 invalid
 // and 1/3 for k+1. However it may as well be [x,1-2x,x] for any x<1/2.
-#define pinpad_fuzz (93/3) // more correctly (1024-93)/12/3 = 26
-#define pinpad_max_valid (947+pinpad_fuzz)
+#define pinpad_fuzz (23)
+#define pinpad_max_valid (pinpad_adc_values[11]+pinpad_fuzz)
 #define pinpad_min_idle (1023-pinpad_fuzz)
 
 typedef struct {
@@ -127,7 +130,7 @@ typedef struct {
 pinpad_ctx_t pinpad_ctx;
 
 void EVENT_pinpad_keypressed(char c);
-
+bool snprintl(char* s, int len, int32_t value);
 // pressing a key i means going down to a voltage that is within
 // pinpad_adc_values[i] +- pinpad_fuzz, then going up again.
 // if we reach somewhere between those values, we register the keypress
@@ -143,16 +146,18 @@ void pinpad_on_adc_read(int16_t value) {
   }
   if (value > pinpad_min_idle) {
     if (minval < pinpad_min_idle) {
-      // V_i ~= 93+(1024-93)/12*i
-      // i ~= (V_i-93)*12/(1024-93)
-      int16_t i = ((minval-93)*24/(1024-93)+1)/2;
-      if (i < 0) i = 0;
-      if (i > 11) i = 11;
-      //while (i > 0 && pinpad_adc_values[i-1]
-
-      int16_t diff = abs(minval-(int16_t)pgm_read_word(&pinpad_adc_values[i]));
-      if (diff < pinpad_fuzz) {
-        EVENT_pinpad_keypressed((char)pgm_read_byte(&pinpad_chars[i]));
+      char index = 0;
+      uint16_t mindiff = 1024; 
+      for(char i = 0; i < 12; i++){
+        int16_t diff = abs(minval-(int16_t)pgm_read_word(&pinpad_adc_values[i]));
+        if(diff < mindiff){
+          mindiff =diff;
+          index = i;
+        }
+      }
+      if (mindiff < pinpad_fuzz) {
+        char key = (char)pgm_read_byte(&pinpad_chars[index]);
+        EVENT_pinpad_keypressed(key);
       } else {
         EVENT_pinpad_keypressed(0);
       }
