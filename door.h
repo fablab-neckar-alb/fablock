@@ -109,7 +109,7 @@
 // estimated by measuring with MC:
 // grep -a "^ *[0-9]\+$" stalling.txt | sort -n | uniq -c
 #define DOOR_MOTOR_SENSE_VOLTAGE_RUNNING 570
-#define DOOR_MOTOR_SENSE_VOLTAGE_STALL 512
+#define DOOR_MOTOR_SENSE_VOLTAGE_STALL 530
 #define DOOR_MOTOR_SENSE_FUZZ 10
 //((int16_t)(0.2*1024/5))
 uint8_t door_mode = 0;
