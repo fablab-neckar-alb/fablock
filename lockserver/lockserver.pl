@@ -7,6 +7,12 @@
 #   echo -n '!0' | socat -u - UNIX-SENDTO:/tmp/ux_tty_server.sock
 #   socat - UNIX-SENDTO:/tmp/ux_tty_server.sock,bind=""
 
+#   socat - pty,link=testpty
+#   ./lockserver.pl --device testpty --stdio --logfile - --passwdfile testpwd.shadow --unix-socket test.sock
+#     # pin is 12341234
+#   echo -n '!0' | socat -u - UNIX-SENDTO:test.sock
+#   socat - UNIX-SENDTO:test.sock,bind=""
+
 # DONE: Getopt::Long
 
 use strict;
@@ -161,9 +167,13 @@ sub log_error {
 
 sub setup_log {
   if ($logfile ne "") {
-    my $umask = umask 0077;
-    open($log,">>",$logfile) or die "cannot open logfile \"$logfile\": $!";
-    umask $umask;
+    if ($logfile ne "-") {
+      my $umask = umask 0077;
+      open($log,">>",$logfile) or die "cannot open logfile \"$logfile\": $!";
+      umask $umask;
+    } else {
+      open($log,">&",STDOUT) or die "cannot open stdout as logfile: $!";
+    }
     $log->autoflush(1);
   } else {
     undef $log;
@@ -432,7 +442,7 @@ sub setup_server {
     unlink $ux_path;
   }
   my $umask = umask 0077;
-  $server = IO::Socket::UNIX->new(Type => SOCK_DGRAM, Local => $ux_path, Listen => 5) or die "cannot open server";
+  $server = IO::Socket::UNIX->new(Type => SOCK_DGRAM, Local => $ux_path, Listen => 5) or die "cannot open server socket: $!";
   umask($umask);
   if ($server_group ne "") {
     #my $gid = (getgrnam($server_group))[2];
@@ -478,7 +488,7 @@ sub setup {
 # commands are forwarded directly to the device
 my $valid_command = qr/^![a-zA-Z0-9].*$/;
 # requests are directly processed from this script.
-my $valid_request = qr/^\.(?<name>register|unregister|baudrate|close|open|pinentry|state|reset_device)(?<param>(?: \w+)*)$/;
+my $valid_request = qr/^\.(?<name>register|unregister|baudrate|close|open|openfor|pinentry|state|reset_device)(?<param>(?: \w+)*)$/;
 
 my @default_wants = qw(W R);
 
@@ -526,6 +536,26 @@ my %request_handlers = (
     $param = "unknown" if $param eq "";
     log_notice("open request by $param");
     send_dev("!D1\n");
+  },
+  openfor => sub {
+    my ($from,$request) = @_;
+    my $param = $request->{param};
+    $param =~ s/^\s*//;
+    $param =~ s/\s*$//;
+    my ($userid, $check_perm) = split / +/, $param;
+    $check_perm //= 1;
+    my $valid = 1;
+    if ($check_perm) {
+      $valid = check_user_permission($userid);
+    }
+    if ($valid) {
+      log_notice("openfor request for $userid (".($check_perm?"valid":"unchecked").")");
+      send_dev("!D1\n");
+    } else {
+      log_notice("openfor request for $userid (invalid)");
+    }
+    my $datagram = sprintf "openfor %s %d", $userid, $valid?1:0;
+    my $res = eval { $server->send($datagram,0,$from); };
   },
   close => sub {
     my ($from,$request) = @_;
@@ -644,6 +674,31 @@ sub verify_pin {
   # TODO: add mechanism for invalidation of often mistyped passwords.
 }
 
+sub check_user_permission {
+  my $user = shift;
+  return 0 unless $user =~ /[0-9]{4}/;
+  my $crypted = passwd_lookup($passwd_file,$user);
+  return 0 unless defined $crypted;
+  # TODO: check optional time-based permission here.
+  return 1;
+}
+
+sub handle_challenge {
+  my ($pin,$source) = @_;
+  # we only accept challenge-responses from the physical device.
+  return if $source ne "device";
+  if ($pin =~ /^(\d{4})(\d{4})(\d+)$/) {
+    my ($salt,$user,$pw) = ($1,$2,$3);
+    my $valid = verify_pin($user,$pw);
+    if ($valid) {
+      send_listeners("challenge","$salt $user");
+      return 1;
+    }
+  }
+  send_listeners("challenge","FAIL");
+  return 0;
+}
+
 sub handle_pinentry {
   my ($pin,$source) = @_;
   log_notice("A pin has been entered from $source.");
@@ -652,6 +707,11 @@ sub handle_pinentry {
     $special->($pin);
   } elsif ($pin =~ /^(\d{4})(\d+)$/) {
     my ($user,$pw) = ($1,$2);
+    if ($user eq "0001") {
+      # this is a challenge request.
+      handle_challenge($pw,$source);
+      return;
+    }
     my $valid = verify_pin($user,$pw);
     if ($valid) {
       log_notice("User $user verified by PIN.");
