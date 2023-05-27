@@ -29,9 +29,12 @@ The commands are (see $valid_request):
 .open <requester>
   opens the door (unconditionally) for <requester> subsystem.
 
-.openfor <userid> <check_permission>
-  opens the door for user <userid>. if <check_permission> is nonzero, the userid will be checked for existence and permission.
-  replies with "openfor <userid> <valid>"
+.openfor <requester> <userid> <check_permission>
+  opens the door for user <userid>, requested by subsystem <requester>.
+  if <check_permission> is nonzero, the userid will be checked for
+  existence and permission.
+  replies with "openfor <userid> <valid>".
+  <valid> is nonzero iff the request was fulfilled.
 
 .pinentry <pin>
   simulates the entry of a pin.
