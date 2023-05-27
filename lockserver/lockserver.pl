@@ -456,7 +456,7 @@ sub setup_server {
 }
 
 sub setup_stdio {
-  ($stdin,$stdout) = ("",undef);
+  ($stdin,$stdout) = (-1,undef);
   if ($use_stdio) {
     $stdin = \*STDIN;
     # FIXME: This apparently affects *every* process holding that pty:
