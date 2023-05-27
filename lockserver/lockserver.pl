@@ -2,12 +2,6 @@
 
 # testing:
 #   socat - pty,link=testpty
-#   ./ux_serv.pl testpty
-#   tail -f /tmp/ux_tty_server.log
-#   echo -n '!0' | socat -u - UNIX-SENDTO:/tmp/ux_tty_server.sock
-#   socat - UNIX-SENDTO:/tmp/ux_tty_server.sock,bind=""
-
-#   socat - pty,link=testpty
 #   ./lockserver.pl --device testpty --stdio --logfile - --passwdfile testpwd.shadow --unix-socket test.sock
 #     # pin is 12341234
 #   echo -n '!0' | socat -u - UNIX-SENDTO:test.sock
@@ -78,7 +72,6 @@ sub usage {
     my $explanation = $opts_explained{$name};
     print STDERR "    --",$_,(defined $value ? " (value: $value)":""),"\n",
           defined($explanation) ? "        $explanation\n":"";
-    
   }
   exit($ret);
 }
