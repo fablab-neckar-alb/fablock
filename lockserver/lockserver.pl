@@ -542,17 +542,17 @@ my %request_handlers = (
     my $param = $request->{param};
     $param =~ s/^\s*//;
     $param =~ s/\s*$//;
-    my ($userid, $check_perm) = split / +/, $param;
+    my ($subsystem, $userid, $check_perm) = split / +/, $param;
     $check_perm //= 1;
     my $valid = 1;
     if ($check_perm) {
       $valid = check_user_permission($userid);
     }
     if ($valid) {
-      log_notice("openfor request for $userid (".($check_perm?"valid":"unchecked").")");
+      log_notice("openfor request from $subsystem for $userid (".($check_perm?"valid":"unchecked").")");
       send_dev("!D1\n");
     } else {
-      log_notice("openfor request for $userid (invalid)");
+      log_notice("openfor request from $subsystem for $userid (invalid)");
     }
     my $datagram = sprintf "openfor %s %d", $userid, $valid?1:0;
     my $res = eval { $server->send($datagram,0,$from); };
