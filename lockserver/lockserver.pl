@@ -269,7 +269,7 @@ package Cron {
     if (ref $name eq "HASH") {
       $name = $name->{name};
     }
-    my $event = $cron->get_event($name);
+    my $event = $self->get_event($name);
     return defined $event;
   }
 
@@ -315,6 +315,55 @@ package Cron {
     }
     return $i;
   }
+}
+
+##### rate-limiting functions #####
+
+# at most 2 calls are made per (seconds/hit) time. No delays happen if
+# seconds/hit are not reached.
+# type => [seconds/hit, acceptable queue len ]
+my $rate_limit_config = {
+  "socket-pinentry" => [1,10],
+};
+
+my $rate_limit_state;
+sub rate_limited {
+  my ($type,$code) = @_;
+  die "not a code ref" unless ref $code eq "CODE";
+  my $conf = $rate_limit_config->{$type}//
+             $rate_limit_config->{_default}//[1,10];
+  my ($dt,$len) = @$conf;
+  my $state = \$rate_limit_state->{$type};
+  my $time = time;
+  if (!defined $$state) {
+    $$state = { last => $time-2*$dt, queue => [] };
+  }
+  if ($$state->{last} <= $time-$dt) {
+    $$state->{last} = $time;
+    $code->();
+  } else {
+    my $n = @{$$state->{queue}};
+    # we don't want arbitrary queue lengths but we also don't want a DoS by
+    # filling up a queue. As a compromise you can fight a DoS by
+    # counter-DoSing to get your valid query in between the fake
+    # ones by chance.
+    my $accept = $n < $len || (rand() < 1/2**($n-$len));
+    return 0 unless $accept;
+    push @{$$state->{queue}}, $code;
+    if ($n == 0) {
+      # we don't support changing the config over time, so we just use the
+      # locals in the closure.
+      my $task;
+      $task = sub {
+        my $n = @{$$state->{queue}};
+        my $code = shift @{$$state->{queue}};
+        $cron->schedule(time+$dt,"rate_limit_$type",$task) if $n > 1;
+        $code->() if $n > 0;
+      };
+      $cron->schedule(time+$dt,"rate_limit_$type",$task);
+    }
+  }
+  return 1;
 }
 
 ##### listener functions #####
@@ -565,7 +614,8 @@ my %request_handlers = (
     $param =~ s/^\s*//;
     $param =~ s/\s*$//;
     return if $param =~ /[^0-9]/;
-    handle_pinentry($param,"socket");
+    rate_limited("socket-pinentry",sub{ handle_pinentry($param,"socket"); });
+    # handle_pinentry($param,"socket");
   },
   state => sub {
     my ($from,$request) = @_;
