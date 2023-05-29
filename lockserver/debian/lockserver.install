@@ -1,3 +1,1 @@
 lockserver.pl /usr/sbin/
-conf/logrotate/lockserver /etc/logrotate.d/
-conf/systemd/lockserver.service /etc/systemd/system/
