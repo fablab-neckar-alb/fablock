@@ -519,7 +519,7 @@ sub setup {
   $running = 0;
   if ($opts{pidfile} ne "") {
     open(my $f,">",$opts{pidfile}) or die "cannot write pidfile: $!";
-    print $f, $$;
+    print $f $$,"\n";
     close($f);
   }
 }
