@@ -485,6 +485,7 @@ sub setup_server {
   }
   my $umask = umask 0077;
   $server = IO::Socket::UNIX->new(Type => SOCK_DGRAM, Local => $ux_path, Listen => 5) or die "cannot open server socket: $!";
+  $server->blocking(0);
   umask($umask);
   if ($server_group ne "") {
     #my $gid = (getgrnam($server_group))[2];
@@ -598,6 +599,10 @@ my %request_handlers = (
     }
     my $datagram = sprintf "openfor %s %d", $userid, $valid?1:0;
     my $res = eval { $server->send($datagram,0,$from); };
+    if (!$res) {
+      log_warning("Could not respond to an openfor request.");
+    }
+    return $res;
   },
   close => sub {
     my ($from,$request) = @_;
@@ -683,7 +688,7 @@ sub passwd_lookup {
   };
   my $res = undef;
   while (my $line = <$f>) {
-    next if /^#/;
+    next if $line =~ /^#/;
     my @fields = split /:/, $line, 3;
     next if @fields < 2;
     # we don't want to expose any timing information to attackers, so we don't do shortcuts and loop through the whole file no matter where or whether we find the user entry.
