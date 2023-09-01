@@ -831,8 +831,8 @@ my %device_handlers = (
   MFAIL => sub {
     my ($msg) = @_;
     my $param = $msg->{param};
-    if ($param =~/^[012]$/) {
-      log_warning("motor failing: ".("stall","failure to run","failure to stop")[$param]);
+    if ($param =~/^[123]$/) {
+      log_warning("motor failing: ".("stall","failure to run","failure to stop")[$param-1]);
     } else {
       log_warning("invalid mfail parameter \"$param\"");
     }
