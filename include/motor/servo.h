@@ -12,8 +12,8 @@
  * published by the Free Software Foundation.
  */
 
-#ifndef __SERVO_H__
-#define __SERVO_H__
+#ifndef _MOTOR_SERVO_H__
+#define _MOTOR_SERVO_H__
 // data sheet:
 //#define servo_pulse_low msec2ticks(1,TIMER_DIV)
 //#define servo_pulse_high msec2ticks(2,TIMER_DIV)
@@ -80,4 +80,4 @@ void servo_stop() {
   PORTC |= 1<<SERVO_PIN;
 }
 
-#endif
+#endif /* MOTOR_SERVO_H */
