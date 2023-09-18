@@ -52,7 +52,6 @@ void adc_watch_unidle() {
     c++;
   adcw_state.channel = c;
   adcw_state.state = ADCW_STATE_INIT;
-  //adc_conf(true,mask,prescaler);
   adc_interrupt_enable(true);
   adc_start_continuous(c,ADC_REF_VCC);
 }
@@ -70,22 +69,6 @@ void adc_watch_start() {
   } else {
     adcw_state.state = ADCW_STATE_IDLE;
   }
-/*
-  uint8_t mask = adcw_state.mask;
-  //uint8_t prescaler = adcw_state.prescaler;
-  uint8_t c = 0;
-  if (mask == 0) {
-    adcw_state.state = ADCW_STATE_IDLE;
-    return;
-  }
-  while (c < 8 && (mask & (1<<c)) == 0)
-    c++;
-  adcw_state.channel = c;
-  adcw_state.state = ADCW_STATE_INIT;
-  //adc_conf(true,mask,prescaler);
-  adc_interrupt_enable(true);
-  adc_start_continuous(c,ADC_REF_VCC);
-*/
 }
 
 void adc_watch_init(uint8_t channel_mask) {

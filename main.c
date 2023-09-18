@@ -2,7 +2,7 @@
 #define NO_LUFA
 
 //#define DEBUG_DISPLAY
-//#define DEBUG_MOTOR_SENSE
+#define DEBUG_MOTOR_SENSE
 //#define DEBUG_INTERRUPTS
 #define ENABLE_EASTEREGGS
 //#define DEBUG_BACKDOOR
@@ -23,6 +23,8 @@
 #include <timers.h>
 #define EVENT_QUEUE_SIZE 8
 #include <events.c.h>
+
+#include "oben.h"
   
 #define TIMER_DIV 1
 #define TIMER_SCALE TIMER_SCALE_1
@@ -74,8 +76,7 @@ eepromfs_index_t eep_index;
 #include "testfont.h"
 #endif
 
-#define BEEP_PORT C
-#define BEEP_PIN 5
+
 #include "beep.h"
 //#define MELODY_DEFINE_KOROBEINIKI
 #include "melody.h"
@@ -87,28 +88,22 @@ eepromfs_index_t eep_index;
 #include "mccarthys_waltz.h"
 #endif
 
-#define BEEP_CHANNEL 0
-//#define BEEP_PIN (1*8+5)
-//#include "softosc.h"
 
-#define PINPAD_PIN 4
+
+
 #include <pinpad.h>
 
-// with the gameboy hardware, we get a little low on free pins...
-// thankfully that hardware does not otherwise use Port C...
-#define DOOR_PORT C
-#define DOOR_MOTOR_PIN1 0
-#define DOOR_MOTOR_PIN2 1
-#define DOOR_SENSOR_PIN 2
-#define DOOR_BOLTSENSOR_PIN 3
+
+
+
+
+
 //#define DOOR_MOTOR_IS_STEPPER
-#define DOOR_MOTOR_IS_SERVO
+#define DOOR_MOTOR_IS_DC
 #define DOOR_MOTOR_TIMER_DIV 64
 #define DOOR_MOTOR_OC 0
 
-#define SERVO_PIN DOOR_MOTOR_PIN1
 
-#include "servo.h"
 #include "door.h"
 
 /*
@@ -288,50 +283,6 @@ void EVENT_softosc_done(uint8_t channel) {
     EVENT_beep_done();
 }
 
-/*
-#define BEEP_PIN 5 // Port C, implicitly
-uint32_t beep_delay;
-uint32_t beep_count;
-
-void EVENT_beep_done();
-
-void beep_event(void* param) {
-  PINC = 1 << BEEP_PIN;
-
-  //int16_t i = (int16_t)param;
-  uint32_t i = beep_count;
-
-  if (i > 0) {
-    i--;
-    beep_count = i;
-    enqueue_event_rel(beep_delay,&beep_event,NULL);//(void*)i);
-  } else {
-    DDRC &= ~(1 << BEEP_PIN);
-    PORTC |= 1 << BEEP_PIN;
-    EVENT_beep_done();
-  }
-}
-
-// takes pin-toggle delay and count of pin toggles.
-void hw_beep(uint32_t delay, uint32_t count) {
-  beep_delay = delay;
-  beep_count = count;
-  //uint16_t count = count;
-  PORTC &= ~(1 << BEEP_PIN);
-  DDRC |= 1 << BEEP_PIN;
-  dequeue_events(&beep_event);
-  enqueue_event_rel(1,&beep_event,NULL); //(void*)count);
-}
-
-// takes frequency in Hz and duration in msec.
-void beep(uint16_t freq, uint32_t msec) {
-  uint32_t delay = ((uint32_t)sec2ticks(1,TIMER_DIV))/(2*freq);
-  uint32_t count = ((uint32_t)freq*2*msec)/1000; // freq == 1/2 sec
-  hw_beep(delay,count);
-}
-#define BEEP_FREQ_TO_DELAY(freq) ((uint32_t)sec2ticks(1.0/(2*(freq)),TIMER_DIV))
-#define BEEP_MS_TO_COUNT(freq,msec) (((uint32_t)(freq)*2*(msec))/1000);
-*/
 
 // we use a melody structure so that we can make more complicated feedback sounds in the future. However we must keep track of the starting notes' indexes in the index array below.
 melody_begin(feedback_melody,480)
@@ -378,30 +329,6 @@ melody_end()
 static const uint8_t feedback_notes_ix[] PROGMEM = {0,4,6,8,10,12,14,21,27};
 #define feedback_sounds_count (sizeof(feedback_notes_ix)/sizeof(feedback_notes_ix[0]))
 
-/*
-#define beep_entry(freq,msec) { .delay=(uint16_t)BEEP_FREQ_TO_DELAY(freq), .count=(uint16_t)BEEP_MS_TO_COUNT(freq,msec) }
-static const struct {
-  uint16_t delay, count;
-} feedback_sounds[] PROGMEM = {
-  // sleep, bad, good, start, end, wakeup, anything
-  beep_entry(110,1000),
-  beep_entry(220, 400),
-  beep_entry(440, 300),
-  beep_entry(880, 500),
-  beep_entry(660, 500),
-  beep_entry(1760,500),
-  beep_entry(440,1000)
-};
-#define feedback_sounds_count (sizeof(feedback_sounds)/sizeof(feedback_sounds[0]))
-*/
-/*
-void do_pinpad_feedback(int i) {
-  i = i < feedback_sounds_count ? i : feedback_sounds_count-1;
-  uint16_t delay = pgm_read_word(&feedback_sounds[i].delay);
-  uint16_t count = pgm_read_word(&feedback_sounds[i].count);
-  hw_beep(delay,count);
-}
-*/
 
 void do_pinpad_feedback(int i) {
   i = i < feedback_sounds_count ? i : feedback_sounds_count-1;
@@ -757,6 +684,7 @@ void process_pinpad_line() {
     }
   }
 #ifdef DEBUG_BACKDOOR
+  #warning(Backdoor Active)
   // TODO: remove this backdoor:
   if (strcmp(s,"12345") == 0) {
     door_unlock();
