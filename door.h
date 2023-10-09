@@ -54,6 +54,7 @@
 // #define DOOR_MAXLOCKTIME msec2ticks(6000,TIMER_DIV)
 #define DOOR_MAXLOCKTIME msec2ticks(3000, TIMER_DIV)
 #define DOOR_OVERLOCKTIME msec2ticks(500, TIMER_DIV)
+#define DOOR_MFAIL_RECOVERTIME msec2ticks(200, TIMER_DIV)
 #define DOOR_MINUNLOCKTIME msec2ticks(2000, TIMER_DIV)
 // #define DOOR_MAXUNLOCKTIME msec2ticks(6000,TIMER_DIV)
 #define DOOR_MAXUNLOCKTIME msec2ticks(4 * 6000, TIMER_DIV)
@@ -63,7 +64,7 @@
 #define DOOR_CLOSELOCKTIME sec2ticks(2, TIMER_DIV)
 #define DOOR_UNLOCKLOCKTIME sec2ticks(8, TIMER_DIV)
 
-#define DOOR_MOTORFAIL_STALL_TIME msec2ticks(2000, TIMER_DIV)
+#define DOOR_MOTORFAIL_STALL_TIME msec2ticks(250, TIMER_DIV)
 #define DOOR_MOTORFAIL_IDLE_TIME msec2ticks(2000, TIMER_DIV)
 #define DOOR_MOTORFAIL_RUNNING_TIME msec2ticks(2000, TIMER_DIV)
 
@@ -79,8 +80,8 @@
 
 // estimated by measuring with MC:
 // grep -a "^ *[0-9]\+$" stalling.txt | sort -n | uniq -c
-#define DOOR_MOTOR_SENSE_VOLTAGE_RUNNING 800
-#define DOOR_MOTOR_SENSE_VOLTAGE_STALL 500
+#define DOOR_MOTOR_SENSE_VOLTAGE_RUNNING 900
+#define DOOR_MOTOR_SENSE_VOLTAGE_STALL 720
 #define DOOR_MOTOR_SENSE_FUZZ 10
 //((int16_t)(0.2*1024/5))
 uint8_t door_mode = 0;
@@ -175,11 +176,17 @@ void door_maybe_motorfail_event(void *param)
     if (mode == 0 ||                        // The motor should never stall when it is off.
         (mode == 1 && !door_is_locked()) || // locking failed
         (mode == 2 && door_is_locked()))    // unlocking failed
-      EVENT_door_motor_failing(reason);
-    if (mode == 1)
+      {
+        EVENT_door_motor_failing(reason);
+      }
+    if (mode == 1){
+      door_schedule_mfail_recover(2);
       EVENT_door_locked(door_is_locked());
-    else if (mode == 2)
+    }
+    else if (mode == 2){
+      door_schedule_mfail_recover(1);
       EVENT_door_unlocked(!door_is_locked());
+    }
   }
   else if (reason == 2)
   {
@@ -279,6 +286,15 @@ void door_unlock()
   dequeue_events(&door_lock_event);
   door_enter_mode(2);
   enqueue_event_rel(DOOR_MAXUNLOCKTIME, &door_lock_event, NULL);
+}
+
+void door_schedule_mfail_recover(uint8_t mode){
+  //after a seized motor stop schedule a short turn in the opposed direction
+  dequeue_events(&door_lock_event);
+  
+  door_set_motor(mode);
+  enqueue_event_rel(DOOR_MFAIL_RECOVERTIME, &door_lock_event, NULL);
+
 }
 
 // TODO: who's responsible for interrupt masks?
