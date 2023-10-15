@@ -103,17 +103,31 @@ bool door_is_closed()
   everything else is invalid
 */
 void door_set_motor(uint8_t value);
+void door_schedule_mfail_recover(uint8_t mode);
 
 
 #if defined(MOTOR_IS_DC)
-
 #ifdef MOTOR_DRIVER_HR8833
 #include "motor/HR8833.h"
 #endif /* MOTOR_DRIVER_HR8833 */
 
-#else
-#include "motor/interface.h"
+#elif defined(MOTOR_IS_SERVO)
+#include "motor/servo.h"
+#define door_motor_init servo_init
+void door_set_motor(uint8_t value){
+  #warning ("Untested code")
+  if(value == 0){
+    servo_set_pos(127);
+  } else if (value == 1){
+    servo_set_pos(255);
+  } else if (value == 2)
+  {
+    servo_set_pos(0);
+  }
+}
 
+#else
+#error "Unknown Motor Configuration"
 #endif
 
 void door_init()
