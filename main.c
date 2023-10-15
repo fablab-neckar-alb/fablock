@@ -1,11 +1,22 @@
 // for spi.h
 #define NO_LUFA
 
+#ifdef CONFIG_DEMO
+  #include "demodoor.h"
+#elif CONFIG_UPPER
+  #include "oben.h"
+#elif CONFIG_CELLAR
+  #include "cellar.h"
+#elif CONFIG_SOCIAL
+  #include "sozialraum.h"
+#else
+  #error "Unset Config"
+#endif
+
 //#define DEBUG_DISPLAY
 #define DEBUG_MOTOR_SENSE
 //#define DEBUG_INTERRUPTS
 #define ENABLE_EASTEREGGS
-//#define DEBUG_BACKDOOR
 //#define ENABLE_COPYRIGHTED_EASTEREGGS
 
 
@@ -24,7 +35,7 @@
 #define EVENT_QUEUE_SIZE 8
 #include <events.c.h>
 
-#include "oben.h"
+
   
 #define TIMER_DIV 1
 #define TIMER_SCALE TIMER_SCALE_1
