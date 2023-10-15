@@ -146,9 +146,9 @@ void pinpad_on_adc_read(int16_t value) {
   }
   if (value > pinpad_min_idle) {
     if (minval < pinpad_min_idle) {
-      char index = 0;
+      unsigned char index = 0;
       uint16_t mindiff = 1024; 
-      for(char i = 0; i < 12; i++){
+      for(unsigned char i = 0; i < 12; i++){
         int16_t diff = abs(minval-(int16_t)pgm_read_word(&pinpad_adc_values[i]));
         if(diff < mindiff){
           mindiff =diff;
