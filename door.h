@@ -113,18 +113,30 @@ void door_schedule_mfail_recover(uint8_t mode);
 
 #elif defined(MOTOR_IS_SERVO)
 #include "motor/servo.h"
-#define door_motor_init servo_init
-void door_set_motor(uint8_t value){
-  #warning ("Untested code")
-  if(value == 0){
-    servo_set_pos(127);
-  } else if (value == 1){
-    servo_set_pos(255);
-  } else if (value == 2)
-  {
-    servo_set_pos(0);
+void door_set_motor(uint8_t value) {
+  if (value < 3) {
+    if (value == 0) {
+      // disable motor
+      servo_stop();
+    } else {
+      // set direction pin
+      if (value == 2)
+        servo_set_pos(0);
+      else
+        servo_set_pos(255);
+      // enable motor and run it.
+      // TODO: should we really make a servo_maybe_start()?
+      // TODO: should we really rely on servo_stop() to be idempotent?
+      servo_stop();
+      servo_start();
+    }
   }
 }
+
+void door_motor_init() {
+  servo_init();
+}
+
 
 #else
 #error "Unknown Motor Configuration"
