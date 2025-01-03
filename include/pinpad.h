@@ -16,80 +16,54 @@
 #define __PINPAD_H__
 
 /*
-  The pinpad is a numerical+"*"+"#" 12-button keyboard wired so that it
-  can be read by one analog pin, used as wakeup-interrupt at least for
-  the "*" key and provide a limited attack surface for anyone with access
-  to all external parts.
+  This is the common implementation to read a pressed key on the pinpad pin.
   
-  required: a pin with both ADC and interrupt capability (C0..C5).
 
-  The pinpad hardware:
-    12+1 pins, one for each button plus mass.
-
-    Pinpad connection:
-      leftmost pin (1) ----> rightmost pin (13)
-      *, 7, 1, 4, 0, 8, 5, 2, #, 9, 6, 3, mass
-
-      Yes, that's column-major order *except* for the swapping of 1 and 4.
-
-
-  complete wiring:
-    VCC-Ru-----+--+----~~----------+
-          +-Rm-+  |                | 
-    MC----+       Dz --~~------*===*-------------------+
-          +-C--+  | /          |                       |
-    GND-Rd-----+--+-           *=R2'=*=R3'=*=R4'===Rn'=* (connector)
-
-  external wiring:
-    *===*
-    |   | 
-    |   +-------------------+
-    |                       | 
-    *=R2'=*=R3'=*=R4'===Rn'=* (connector)
-
-    Ri' = (0, 1k, 1.2k, 1.5k, 1.8k, 4.7k/2, 3.3k, 4.7k, 6.8k, 10k, 22k, 68k)
-
-    (ideally Ri' = (0, 1k, 1.2k, 1.5k, 1.8k, 2.4k, 3.1k, 4.4k, 6.6k, 11k, 22k, 66k), but the above were available as SMD)
-
-    Ri' = Ri - R_{i-1}:
-    The result is a 2-wire interface that gives resistance Ri
-    if button i is pressed (lower buttons mask higher buttons).
-    Ri are chosen so that roughly equal voltage drops appear
-    between adjacent keys.
-
+  Requirements: 
+    * A pin with both ADC and interrupt capability (C0..C5).
+    * Choose one of the surrported pinpad models by defining
+      PINPAD_IMPLEMENTATION to LINEAR or MATRIX            
 
   internal wiring:
     We used C = 2*220nF, Dz = 12V Zener diode, soldered everything directly
     between two pin headers (everything in SMD parts except for Dz).
 
-    VCC-*-Ru-----+--+---+
-            +-Rm-+  |   |
-    MC--*---+      ^Dz  * 
-            +-C--+  |
-    GND-*-Rd-----+--+---*
+  # S1: Adc Conection to Arduino input pin:
 
-    Values:
-      Ru = 10k, Rd=1k => Rud=11k
-      Rud := Ru+Rd
-      ideally:
-        V_i = VCC*(Rd/Rud+(i-1)/n*(Ru/Rud)):
-        Ri = Ru/(1-V_i/VCC)-Rud
-           = Rud*((i-1)/(n+1-i))
-        Ri = (0, 1000, 2200, 3666.66666666667, 5500, 7857.14285714286, 11000, 15400, 22000, 33000, 55000, 121000)
-        ($ perl -e 'print 93+int((1024-93)/12*$_),", " for 0..12; print "\n";')
-        (93 = 1024/11)
-        V_i = VCC/1024*(93, 170, 248, 325, 403, 480, 558, 636, 713, 791, 868, 946)
-      real by design:
-        Ri' = (0, 1k, 1.2k, 1.5k, 1.8k, 4.7k/2, 3.3k, 4.7k, 6.8k, 10k, 22k, 68k)
-        Ri = (0, 1k, 2.2k, 3.7k, 5.5k, 7.85k, 11.15k, 15.85k, 22.65k, 32.65k, 54.65k, 122.65k)
-        V_i = VCC*(1-Ru/(Rud+Ri))
-            = (0.45V, 0.83V, 1.21V, 1.60V, 1.97V, 2.35V, 2.74V, 3.14V, 3.51V, 3.85V, 4.24V, 4.63V)
-            = VCC/1024*(93, 171, 248, 327, 403, 481, 562, 643, 720, 789, 868, 947)
-      real by measurement:
-        TODO
+    VCC -----+
+             Ru
+             +-------+--- *K+
+             Rm      |
+    MC_adc---+      ^Dz
+             C       |
+             +-------+--- *K-
+             Rd
+    GND-*----+
+
+    Chosen Values:
+      R_u = 10k 
+      R_d = 1k
+      R_m can be ignored as there is no current flowing over the ADC
+      R_k(i) = chosen in pinpad_matrix.h or pinpad_linear.h
+      The pinpad adc value at the MC pin can be calculated with the formula:
+      MC_adc(i) = 1024 * (R_k(i) + R_u) / (R_k(i) + R_ud)
+
+    Derived Values:
+      The adc of our arduino has 10bit Resolution.
+      Adc_range = 2^10 = 1024
+      Adc_max = 2^10 - 1 = 1023
 */
 
-#include <avr/pgmspace.h>
+// every implementation of a pipad needs the function get_pinpad_key and the value pinpad_min_idle
+#ifdef PINPAD_LINEAR
+#include "pinpad_linear.h"
+#else
+#ifdef PINPAD_MATRIX
+#include "pinpad_matrix.h"
+#else
+#error "PINPAD_IMPLEMENTATION was not set"
+#endif
+#endif
 #include <adc_watch.h>
 
 /* This needs to be done elsewhere:
@@ -102,102 +76,90 @@ void init() {
 }
 */
 
-
 // Port is always C
 #ifndef PINPAD_PIN
 #define PINPAD_PIN 0 // C0, ADC0
-#endif
+#endif // PINPAD_PIN
 
-// FIXME: replace ideal values by proper ranges.
-//    OR: replace values by linear approximation, saving memory.
-const int16_t pinpad_adc_values[12] PROGMEM =
-  //{93, 171, 248, 327, 403, 481, 562, 643, 720, 789, 868, 947};
-  {93, 170, 236, 292, 371,   410, 445, 476, 522, 545, 566, 586};
-const char pinpad_chars[12] PROGMEM =
-  //{'*', '7', '1', '4', '0', '8', '5', '2', '#', '9', '6', '3'};
-  {'*', '7', '4', '1', '0', '8',   '5', '2', '#', '9', '6', '3'};
 
-//const int16_t pinpad_fuzz = 93/3;
-// idea: voltage space between k and k+1 is 1/3 for k, 1/3 invalid
-// and 1/3 for k+1. However it may as well be [x,1-2x,x] for any x<1/2.
-#define pinpad_fuzz (23)
-#define pinpad_max_valid (pinpad_adc_values[11]+pinpad_fuzz)
-#define pinpad_min_idle (1023-pinpad_fuzz)
-
-typedef struct {
+/// @brief Pinpad context to trac the currently monitored value
+typedef struct
+{
   int16_t minval;
 } pinpad_ctx_t;
 pinpad_ctx_t pinpad_ctx;
 
 void EVENT_pinpad_keypressed(char c);
-bool snprintl(char* s, int len, int32_t value);
-// pressing a key i means going down to a voltage that is within
-// pinpad_adc_values[i] +- pinpad_fuzz, then going up again.
-// if we reach somewhere between those values, we register the keypress
-// as a faulty keypress, returning character '\0'.
-void pinpad_on_adc_read(int16_t value) {
+bool snprintl(char *s, int len, int32_t value);
+/**
+ * @brief pressing a key i means going down to a voltage that is within
+ *        pinpad_adc_values[i], then going up again.
+ * @param value todo
+ */
+void pinpad_on_adc_read(int16_t value)
+{
+  // Get the tracked value
   int16_t minval = pinpad_ctx.minval;
-  if (minval == 1024) {
-    adc_watch_set_range(PINPAD_PIN,value-5,value+5);
+  // Was the value reset then start a new measurement with the current value
+  if (minval == 1024)
+  {
+    // TODO:
+    adc_watch_set_range(PINPAD_PIN, value - 5, value + 5);
   }
-  if (value < minval) {
+  // Update the tracked value if the value if it is lower
+  if (value < minval)
+  {
     minval = value;
     pinpad_ctx.minval = minval;
   }
-  if (value > pinpad_min_idle) {
-    if (minval < pinpad_min_idle) {
-      unsigned char index = 0;
-      uint16_t mindiff = 1024; 
-      for(unsigned char i = 0; i < 12; i++){
-        int16_t diff = abs(minval-(int16_t)pgm_read_word(&pinpad_adc_values[i]));
-        if(diff < mindiff){
-          mindiff =diff;
-          index = i;
-        }
-      }
-      if (mindiff < pinpad_fuzz) {
-        char key = (char)pgm_read_byte(&pinpad_chars[index]);
+  // Once the key has been released
+  if (value > pinpad_min_idle)
+  {
+    char key = get_pinpad_key(minval);
+    if(key != '\0'){
         EVENT_pinpad_keypressed(key);
-      } else {
-        EVENT_pinpad_keypressed(0);
-      }
     }
+    // Reset traced value and adc watch range
     pinpad_ctx.minval = 1024;
-    adc_watch_set_range(PINPAD_PIN,pinpad_max_valid,1023);
+    adc_watch_set_range(PINPAD_PIN, pinpad_max_valid, 1023);
   }
 }
 
-void pinpad_sleep() {
+void pinpad_sleep()
+{
   // need to activate digital input, disable reading
-  uint8_t mask = (1<<PINPAD_PIN);
+  uint8_t mask = (1 << PINPAD_PIN);
   PCMSK1 |= mask;
   DIDR0 &= ~mask;
   adc_watch_set_mask(adcw_state.mask & ~mask);
-  //adc_watch_set_range(PINPAD_PIN,0,1023);
+  // adc_watch_set_range(PINPAD_PIN,0,1023);
 }
 
-void pinpad_unsleep() {
+void pinpad_unsleep()
+{
   // need to disable digital input, activate reading
-  uint8_t mask = (1<<PINPAD_PIN);
+  uint8_t mask = (1 << PINPAD_PIN);
   PCMSK1 &= ~mask;
   DIDR0 |= mask;
 
-  adc_watch_set_range(PINPAD_PIN,pinpad_max_valid,1023);
+  adc_watch_set_range(PINPAD_PIN, pinpad_max_valid, 1023);
   adc_watch_set_mask(adcw_state.mask | mask);
 }
 
-void pinpad_init() {
+void pinpad_init()
+{
   pinpad_ctx.minval = 1024;
-  DDRC &= ~(1<<PINPAD_PIN);
-  PORTC &= ~(1<<PINPAD_PIN);
-  //PORTC |= (1<<PINPAD_PIN);
+  DDRC &= ~(1 << PINPAD_PIN);
+  PORTC &= ~(1 << PINPAD_PIN);
+  // PORTC |= (1<<PINPAD_PIN);
   pinpad_unsleep();
 }
 
-void pinpad_stop() {
+void pinpad_stop()
+{
   pinpad_sleep();
   pinpad_ctx.minval = 1024;
-  PORTC |= (1<<PINPAD_PIN); // enable internal pull-up, just in case.
+  PORTC |= (1 << PINPAD_PIN); // enable internal pull-up, just in case.
 }
 
 #endif

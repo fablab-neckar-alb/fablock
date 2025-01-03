@@ -16,6 +16,8 @@
 #define MOTOR_DRIVER_HR8833_L 2
 #define MOTOR_DRIVER_HR8833_R 3
 
+#define PINPAD_MATRIX
+
 
 
 #endif /* CONFIG_OBEN_H */
