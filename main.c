@@ -99,15 +99,7 @@ eepromfs_index_t eep_index;
 #include "mccarthys_waltz.h"
 #endif
 
-
-
-
 #include <pinpad.h>
-
-
-
-
-
 
 //#define DOOR_MOTOR_IS_STEPPER
 #define DOOR_MOTOR_IS_DC
