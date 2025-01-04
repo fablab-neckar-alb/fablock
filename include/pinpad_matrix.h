@@ -69,7 +69,7 @@ Key   R(i)   MC_adc(i)
 */
 
 #include <avr/pgmspace.h>
-#include <adc_watch.h>
+#include <stdlib.h>
 
 const int16_t pinpad_adc_values[12] PROGMEM =
     {93, 171, 236, 293, 372, 411, 445, 476, 522, 545, 567, 586};
@@ -95,7 +95,7 @@ inline char get_pinpad_key(int16_t value){
   unsigned char index = 0;
   uint16_t mindiff = 1024;
   // above measurement range no key was pressed
-  if(value >= pinpad_max_valid){
+  if(value >= pinpad_max_valid || value < pinpad_min_dist){
     return '\0';
   }
   for (unsigned char i = 0; i < 12; i++)
