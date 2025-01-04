@@ -1,4 +1,6 @@
 .*.swp
+*.obj
+*.o
 build-*/
 oldstuff
 lockserver/oldstuff

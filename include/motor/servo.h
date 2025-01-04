@@ -34,6 +34,7 @@
 // TODO: Port hardcoded to Port C
 
 #ifndef SERVO_PIN
+#warning(Choosing default value for SERVO_PIN)
 #define SERVO_PIN 5
 #endif
 

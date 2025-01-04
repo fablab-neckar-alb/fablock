@@ -1,5 +1,5 @@
-#ifndef MOTOR_SERVO_H
-#define MOTOR_SERVO_H
+#ifndef MOTOR_HR8833_H
+#define MOTOR_HR8833_H
 
 #include <stdint.h>
 
@@ -38,4 +38,4 @@ void inline door_set_motor(uint8_t value){
 }
 
 
-#endif /* MOTOR_SERVO_H */
+#endif /* MOTOR_HR8833_H */
