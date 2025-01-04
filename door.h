@@ -137,7 +137,8 @@ void door_motor_init() {
   servo_init();
 }
 
-
+#elif defined(MOTOR_IS_STEPPER)
+#include "motor/stepper.h"
 #else
 #error "Unknown Motor Configuration"
 #endif
