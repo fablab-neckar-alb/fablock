@@ -43,6 +43,25 @@
 //uint8_t servo_step = 1;
 int32_t servo_pulse = (servo_pulse_low+servo_pulse_high)/2;
 
+void door_set_motor(uint8_t value) {
+  if (value < 3) {
+    if (value == 0) {
+      // disable motor
+      servo_stop();
+    } else {
+      // set direction pin
+      if (value == 2)
+        servo_set_pos(0);
+      else
+        servo_set_pos(255);
+      // enable motor and run it.
+      // TODO: should we really make a servo_maybe_start()?
+      // TODO: should we really rely on servo_stop() to be idempotent?
+      servo_stop();
+      servo_start();
+    }
+  }
+}
 
 void servo_ontimer(void* param) {
   uint16_t val = (uint16_t)param;
@@ -65,7 +84,7 @@ void servo_set_pos(uint8_t servo_pos)
   //servo_pulse = servo_pulse_low + (((int32_t)servo_pos - 64)*2*(servo_pulse_high-servo_pulse_low))/255; // going from -1 to 2 instead of 0 to 1. // /255;
 }
 
-void servo_init() {
+void door_motor_init() {
   servo_set_pos(128); // middle
 }
 

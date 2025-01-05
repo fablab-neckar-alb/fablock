@@ -18,7 +18,6 @@ void inline door_motor_init(){
   0 = stop
   1 = forward
   2 = backward
-  everything else is invalid
 */
 void inline door_set_motor(uint8_t value){
   if(value == 0){
