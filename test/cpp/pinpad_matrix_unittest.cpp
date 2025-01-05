@@ -6,11 +6,6 @@ namespace
 {
 
 
-//const int16_t pinpad_adc_values[12] PROGMEM =
-//    {93, 171, 236, 293, 372, 411, 445, 476, 522, 545, 567, 586};
-//const char pinpad_chars[12] PROGMEM =
-//    {'*', '7', '4', '1', '0', '8', '5', '2', '#', '9', '6', '3'};
-
 TEST(pinpad_matrix, testBorders)
 {
     EXPECT_EQ('\0', get_pinpad_key(pinpad_min_dist-1));

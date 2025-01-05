@@ -113,29 +113,6 @@ void door_schedule_mfail_recover(uint8_t mode);
 
 #elif defined(MOTOR_IS_SERVO)
 #include "motor/servo.h"
-void door_set_motor(uint8_t value) {
-  if (value < 3) {
-    if (value == 0) {
-      // disable motor
-      servo_stop();
-    } else {
-      // set direction pin
-      if (value == 2)
-        servo_set_pos(0);
-      else
-        servo_set_pos(255);
-      // enable motor and run it.
-      // TODO: should we really make a servo_maybe_start()?
-      // TODO: should we really rely on servo_stop() to be idempotent?
-      servo_stop();
-      servo_start();
-    }
-  }
-}
-
-void door_motor_init() {
-  servo_init();
-}
 
 #elif defined(MOTOR_IS_STEPPER)
 #include "motor/stepper.h"
