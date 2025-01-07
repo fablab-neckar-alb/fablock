@@ -16,16 +16,41 @@
 #include <events.h>
 #include <timers.h>
 
+/**
+ * @brief Computes the successor of a value in modular arithmetic.
+ * 
+ * Increments the value `i` within the range [0, mod - 1]. 
+ * If `i` is less than `mod - 1`, returns `i + 1`; otherwise, returns 0.
+ * 
+ * @param i   Current value (8-bit unsigned integer, must satisfy 0 <= i < mod.
+ * @param mod Modulus defining the range (8-bit unsigned integer, must be > 0).
+ * 
+ * @return uint8_t The next value in the cycle.
+ */
 static inline uint8_t succmod(uint8_t i, uint8_t mod)
 {
   return (i!=mod-1)?i+1:0;
 }
 
+/**
+ * @brief Computes the predecessor of a value in modular arithmetic.
+ * 
+ * Decrements the value `i` within the range [0, mod - 1]. 
+ * If `i` is greater than 0, returns `i - 1`; otherwise, wraps around to `mod - 1`.
+ * 
+ * @param i   Current value (8-bit unsigned integer). Valid range: 0 <= i < mod.
+ * @param mod Modulus defining the range (8-bit unsigned integer, must be > 0).
+ * 
+ * @return uint8_t The previous value in the cycle.
+ */
 static inline uint8_t predmod(uint8_t i, uint8_t mod)
 {
   return (i!=0)?i-1:mod-1;
 }
 
+/*
+  Macro definitions to so that it is not needed to write x = succmod(x,(mod));
+*/
 #define events_incmod(x,mod) do { x = succmod(x,(mod)); } while(0)
 #define events_decmod(x,mod) do { x = predmod(x,(mod)); } while(0)
 
@@ -226,9 +251,33 @@ ISR (TIMER1_COMPA_vect, ISR_BLOCK)
   } while (1);
 }
 
-// (internal) set the timer to go off at the given time or as soon as possible
-// if that time has already passed, handling race conditions.
-// use with interrupts disabled.
+
+/**
+ * @brief Sets the hardware timer to fire at the given time or as soon as possible if the time has already passed.
+ * 
+ * This function ensures that the hardware timer is set correctly, handling potential race conditions that may occur
+ * when the specified `time` has already passed. The function adjusts the timer to avoid missing events and ensures
+ * accurate timing by accounting for potential delays caused by the system state and interrupt timing.
+ * 
+ * This function should only be called with interrupts **disabled** to prevent race conditions during the timer setup.
+ *
+ * @param time The desired time (32-bit value) for the hardware timer in cycles.
+ * 
+ * @note This function is intended for internal use and ensures that the timer is set at the correct time or adjusted
+ *       in case the specified time is in the past. The time will be updated based on the current system time and
+ *       timer scaling, ensuring that the timer is not missed.
+ *
+ * @details 
+ * - If the specified `time` has already passed, the function reschedules the timer for the nearest valid time 
+ *   using the current system time and an appropriate delay (`dist`).
+ * - The function accounts for race conditions by reading the current time (`get_time_sync()`), adjusting the timer
+ *   value accordingly, and ensuring that the timer interrupt will fire correctly once enabled.
+ * - The timing calculation includes several optimizations to handle different timer scaling options.
+ * - The function is optimized for minimal overhead to avoid introducing additional latency.
+ * 
+ * @warning This function modifies the hardware timer directly and should only be called with interrupts disabled
+ *          to ensure consistent behavior.
+ */
 static inline void events_set_hw_timer(uint32_t time)
 {
   OCR1A = time & 0xffff;
@@ -267,67 +316,48 @@ static inline void events_set_hw_timer(uint32_t time)
   }
 }
 
-
-/*
-uint32_t get_time(void)
-{
-  uint16_t l,h;
-  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-    l = Timer_Value(1);
-    h = event_time_high;
-    if ((l & 0x8000) && (TIFR1 & (1 << TOV1))) {
-      h++; // the timer just overflowed, but the interrupt has not yet fired.
-    }
-  }
-//  uint32_t res;
-//  res = ((uint32_t)h) << 16;
-//  res |= (uint32_t)l;
-  return ((uint32_t)h) << 16 | l;
-}
-*/
+/**
+ * @brief Enqueues an event using the provided event structure.
+ * 
+ * This function wraps the `enqueue_event_abs` function, allowing you to enqueue an event by passing an `event_t` 
+ * structure. It extracts the event time, handler, and parameters from the structure and enqueues the event 
+ * in the event queue.
+ * 
+ * @param ev  A pointer to the event structure containing the event details (time, handler, and parameters).
+ * 
+ * @return true if the event was successfully enqueued, false if the event queue is full.
+ *
+ * @note This function simplifies event enqueueing by allowing direct use of the `event_t` structure.
+ */
 bool enqueue_event(const event_t* ev)
 {
   return enqueue_event_abs(ev->time,ev->handler,ev->param);
-/*  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-    if (event_free_ix == event_first_ix)
-      return false;
-    if (event_first_ix == EVENT_INDEX_EMPTY) {
-      event_first_ix = 0;
-      event_free_ix = 1;
-      event_queue[0] = *ev;
-    } else {
-      if (ev->time >= event_queue[event_free_ix-1].time) {
-        event_queue[event_free_ix++] = *ev;
-      } else {
-        uint8_t k = event_free_ix-2;
-        while (ev->time < event_queue[k].time && k != event_first_ix) {
-          if (k != 0) k--;
-          else k = EVENT_QUEUE_SIZE-1;
-        }
-        k = (k!=EVENT_QUEUE_SIZE-1)?k+1:0;
-        for (uint8_t i = event_free_ix; i != k;
-                i = (i!=0)?i-1:EVENT_QUEUE_SIZE-1) {
-          event_queue[i] = event_queue[(i!=0)?i-1:EVENT_QUEUE_SIZE-1];
-        }
-        event_queue[k] = *ev;
-        event_free_ix++;
-        if (event_free_ix == EVENT_QUEUE_SIZE) event_free_ix = 0;
-      }
-    }
-  }
-  return true;*/
 }
 
+/**
+ * @brief Enqueues an event at a specified absolute time in the event queue.
+ * 
+ * This function adds an event to the event queue at a specified absolute time. It ensures that events are added in 
+ * chronological order by adjusting the queue when necessary, handling time wraparound, and updating the first 
+ * available index and the event handler.
+ * 
+ * The function uses atomic blocks to ensure thread-safety while modifying shared variables, and handles edge cases 
+ * like queue wraparound and overflow.
+ *
+ * @param time   The absolute time at which the event should occur (32-bit).
+ * @param h      The event handler function to be called at the specified time.
+ * @param param  A pointer to the parameters that should be passed to the event handler.
+ * 
+ * @return true if the event was successfully enqueued, false if the event queue is full.
+ *
+ * @note This function assumes that the event queue is managed in a circular buffer and that events are sorted 
+ *       by time.
+ */
 bool enqueue_event_abs(uint32_t time, event_handler_fun_t h, void* param)
-/*{
-  event_t ev = { .time = time, .handler = h, .param = param };
-  return enqueue_event(&ev);
-}*/
 {
   uint8_t ix;
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
     // need to copy the volatiles for the optimizer:
-//    uint32_t cur_time = (uint32_t)event_time_high << 16 | Timer_Value(1);
     uint8_t first_ix = event_first_ix;
     uint8_t free_ix = event_free_ix;
     if (free_ix == first_ix)
@@ -338,7 +368,6 @@ bool enqueue_event_abs(uint32_t time, event_handler_fun_t h, void* param)
       ix = 0;
       event_first_ix = first_ix;
     } else {
-      //uint8_t k = free_ix!=0 ? free_ix-1 : EVENT_QUEUE_SIZE-1;
       uint8_t k = predmod(free_ix,EVENT_QUEUE_SIZE);
       uint8_t low = predmod(first_ix,EVENT_QUEUE_SIZE);
       
@@ -346,92 +375,59 @@ bool enqueue_event_abs(uint32_t time, event_handler_fun_t h, void* param)
       // current time (coarsely) before comparing.
       int32_t time_base = (int32_t)event_time_high<<16; //get_time, more coarse, but faster.
       int32_t dtime = (int32_t)time-time_base;
-      //while (time < event_queue[k].time && k != low) {
       while (dtime < (int32_t)event_queue[k].time-time_base && k != low) {
         events_decmod(k,EVENT_QUEUE_SIZE);
-//        if (k != 0) k--;
-//        else k = EVENT_QUEUE_SIZE-1;
       }
       events_incmod(k,EVENT_QUEUE_SIZE);
-//      k = (k!=EVENT_QUEUE_SIZE-1) ? k+1 : 0;
-      for (uint8_t i = free_ix; i != k;
-                   i = (i!=0)?i-1:EVENT_QUEUE_SIZE-1) {
-//        event_queue[i] = event_queue[(i!=0)?i-1:EVENT_QUEUE_SIZE-1];
+      for (uint8_t i = free_ix; i != k; i = (i!=0)?i-1:EVENT_QUEUE_SIZE-1) {
         event_queue[i] = event_queue[predmod(i,EVENT_QUEUE_SIZE)];
       }
       ix = k;
       events_incmod(free_ix,EVENT_QUEUE_SIZE);
-//      free_ix++;
-//      if (free_ix == EVENT_QUEUE_SIZE) free_ix = 0;
     }
     if (ix == first_ix) {
       events_set_hw_timer(time);
-/*
-      OCR1A = time & 0xffff;
-      // This is a race. We need to make sure time > get_time_sync() at the
-      // time we set OCR1A. Otherwise we might be a whole cycle late.
-      // altogether: 71/72/73 cycles (37 + 17 + (5/7/8) + 12).
-      // Below dist is chosen so that dist >= ceil(cycles/DIV)+1.
-      // 37 cycles (call-ret):
-      uint32_t now = get_time_sync();
-      // 4 cycles for 2*movw.
-      // another 4 cycles for 2*movw.
-      // 4 cycles for sub+3*sbc,
-      // 3/2 cycles ((1/2/3)+(2/0) sbrc+rjmp):
-      if (gteq_mod32(now,time)) { // The event is in the past. Reschedule.
-        // 3 cycles (lds+andi):
-        uint8_t scale = (TCCR1B >> CS10) & 7;
-        uint8_t dist;
-        // whole if-clause: 5/7/8 cycles.
-        // 3/2 cycles (1+(1/2) cpi+brne):
-        if (scale == TIMER_SCALE_DIV_8)
-          // 3 cycles (ldi+rjmp)
-          dist = 10;
-        // 2/3 cycles (1+(1/2) cpi+breq):
-        else if (scale == TIMER_SCALE_1)
-          // 1 cycle (ldi)
-          dist = 90; //73, but just to make sure.
-        // 3 cycles (ldi+rjmp)
-        else dist = 3;
-        // 4 cycles for pointless 2*movw.
-        // 4 cycles (add+3*adc):
-        time = now+dist;
-        // 4 cycles (2*sts):
-        OCR1A = time;
-        // At this point the race ends. When time moves on, the interrupt flag
-        // will fire and as soon as we sei(), so will the interrupt vector.
-      }
-//      events_checknclear_ovf();
-*/
     }
     event_free_ix = free_ix;
     event_queue[ix].time = time;
     event_queue[ix].handler = h;
     event_queue[ix].param = param;
-/*    if (ix == first_ix) {
-      OCR1A = time & 0xffff;
-      events_checknclear_ovf();
-    }*/
   }
   return true;
 }
 
-/*
-void events_clear(void)
-{
-  event_first_ix = EVENT_INDEX_EMPTY; // don't even need atomic here.
-}
-*/
-
+/**
+ * @brief Enqueues an event at a relative time offset from the current time.
+ * 
+ * This function calculates the absolute time by adding the specified relative time offset to the current time,
+ * and then enqueues the event at the calculated time using `enqueue_event_abs`.
+ * 
+ * @param time   The relative time offset (in cycles) from the current time when the event should occur.
+ * @param h      The event handler function to be called at the specified time.
+ * @param param  A pointer to the parameters that should be passed to the event handler.
+ * 
+ * @return true if the event was successfully enqueued, false if the event queue is full.
+ *
+ * @note This function is useful for scheduling events to occur after a certain delay from the current time.
+ */
 bool enqueue_event_rel(uint32_t time, event_handler_fun_t h, void* param)
 {
   return enqueue_event_abs(get_time()+time,h,param);
-//  event_t ev = { .time = get_time()+time, .handler = h, .param = param };
-//  return enqueue_event(&ev);
 }
 
-// un-queue all events with handler h
-// returns true iff such events were present.
+/**
+ * @brief Removes all events with the specified handler from the event queue.
+ * 
+ * This function iterates through the event queue and removes all events that have the specified handler `h`. 
+ * The queue is adjusted accordingly, and the first event time is updated if necessary.
+ * 
+ * @param h  The event handler function whose associated events should be removed.
+ * 
+ * @return true if one or more events were removed; false if no matching events were found.
+ *
+ * @note This function modifies the event queue in place and handles the update of the event indices. It also 
+ *       ensures that the hardware timer is updated if the first event is removed.
+ */
 bool dequeue_events(event_handler_fun_t h)
 {
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
@@ -477,7 +473,18 @@ bool dequeue_events(event_handler_fun_t h)
   return false; // never reached, but compiler disagrees.
 }
 
-
+/**
+ * @brief Initializes and starts the event system with a specified timer scale.
+ * 
+ * This function initializes Timer 1, sets the output compare register `OCR1A` based on the first event's time 
+ * (if available), and configures the timer interrupts. It also sets the timer's scaling factor as specified by 
+ * the `scale` parameter.
+ * 
+ * @param scale  The timer scaling factor to control the timer's frequency.
+ *
+ * @note This function assumes that the event system is already initialized and that the first event's time 
+ *       is available in the event queue. It configures the timer for event-based scheduling.
+ */
 void events_start(uint8_t scale)
 {
   Timer_Init(1);
@@ -487,11 +494,3 @@ void events_start(uint8_t scale)
   Timer_Interrupts(1) = TIMER_INTERRUPT_OUTPUT_COMPARE_A;
   Timer_SetScale(1,scale);
 }
-
-/*
-void events_stop(void)
-{
-  Timer_SetScale(1,TIMER_SCALE_STOPPED);
-}
-*/
-
