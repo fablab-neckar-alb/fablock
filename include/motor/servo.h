@@ -43,14 +43,14 @@
 //uint8_t servo_step = 1;
 int32_t servo_pulse = (servo_pulse_low+servo_pulse_high)/2;
 
-void door_set_motor(uint8_t value) {
-  if (value < 3) {
-    if (value == 0) {
+void door_set_motor(uint8_t dir) {
+  if (dir < 3) {
+    if (dir == 0) {
       // disable motor
       servo_stop();
     } else {
       // set direction pin
-      if (value == 2)
+      if (dir == 2)
         servo_set_pos(0);
       else
         servo_set_pos(255);
