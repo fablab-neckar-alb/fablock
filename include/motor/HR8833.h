@@ -19,17 +19,17 @@ void inline door_motor_init(){
   1 = forward
   2 = backward
 */
-void inline door_set_motor(uint8_t value){
-  if(value == 0){
+void inline door_set_motor(uint8_t dir){
+  if(dir == 0){
     CONCAT(PORT, MOTOR_DRIVER_HR8833_DIR_PORT) &= ~((1 << MOTOR_DRIVER_HR8833_L) | (1 << MOTOR_DRIVER_HR8833_R));
     CONCAT(PORT, MOTOR_DRIVER_HR8833_ENABLE_PORT) &= ~(1 << MOTOR_DRIVER_HR8833_ENABLE);
   }
-  else if (value == 1){
+  else if (dir == 1){
     CONCAT(PORT, MOTOR_DRIVER_HR8833_DIR_PORT) &= ~((1 << MOTOR_DRIVER_HR8833_L) | (1 << MOTOR_DRIVER_HR8833_R));
     CONCAT(PORT, MOTOR_DRIVER_HR8833_DIR_PORT) |= (1 << MOTOR_DRIVER_HR8833_L) ;
     CONCAT(PORT, MOTOR_DRIVER_HR8833_ENABLE_PORT) |= (1 << MOTOR_DRIVER_HR8833_ENABLE);
   }
-  else if (value == 2){
+  else if (dir == 2){
     CONCAT(PORT, MOTOR_DRIVER_HR8833_DIR_PORT) &= ~((1 << MOTOR_DRIVER_HR8833_L) | (1 << MOTOR_DRIVER_HR8833_R));
     CONCAT(PORT, MOTOR_DRIVER_HR8833_DIR_PORT) |= (1 << MOTOR_DRIVER_HR8833_R) ;
     CONCAT(PORT, MOTOR_DRIVER_HR8833_ENABLE_PORT) |= (1 << MOTOR_DRIVER_HR8833_ENABLE);

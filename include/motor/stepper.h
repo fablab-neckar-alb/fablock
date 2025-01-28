@@ -37,15 +37,15 @@
 #define DOOR_MOTOR_TIMER_DIV 1024
 #endif
 #define DOOR_MOTOR_TIMER_SCALE CONCAT(TIMER_SCALE_DIV_,DOOR_MOTOR_TIMER_DIV)
-void door_set_motor(uint8_t value) {
-  if (value < 3) {
-    if (value == 0) {
+void door_set_motor(uint8_t dir) {
+  if (dir < 3) {
+    if (dir == 0) {
       // disable motor
       CONCAT(PORT,DOOR_MOTOR_PORT) |= (1 << MOTOR_DISABLE);
       Timer_SetScale(0,TIMER_SCALE_STOPPED);
     } else {
       // set direction pin
-      if (value == 2)
+      if (dir == 2)
         CONCAT(PORT,DOOR_MOTOR_PORT) |= (1 << MOTOR_DIR);
       else
         CONCAT(PORT,DOOR_MOTOR_PORT) &= ~(1 << MOTOR_DIR);
