@@ -2,10 +2,10 @@
 
 # testing:
 #   socat - pty,link=testpty
-#   ./ux_serv.pl testpty
-#   tail -f /tmp/ux_tty_server.log
-#   echo -n '!0' | socat -u - UNIX-SENDTO:/tmp/ux_tty_server.sock
-#   socat - UNIX-SENDTO:/tmp/ux_tty_server.sock,bind=""
+#   ./lockserver.pl --device testpty --stdio --logfile - --passwdfile testpwd.shadow --unix-socket test.sock
+#     # pin is 12341234
+#   echo -n '!0' | socat -u - UNIX-SENDTO:test.sock
+#   socat - UNIX-SENDTO:test.sock,bind=""
 
 # DONE: Getopt::Long
 
@@ -72,7 +72,6 @@ sub usage {
     my $explanation = $opts_explained{$name};
     print STDERR "    --",$_,(defined $value ? " (value: $value)":""),"\n",
           defined($explanation) ? "        $explanation\n":"";
-    
   }
   exit($ret);
 }
@@ -161,9 +160,13 @@ sub log_error {
 
 sub setup_log {
   if ($logfile ne "") {
-    my $umask = umask 0077;
-    open($log,">>",$logfile) or die "cannot open logfile \"$logfile\": $!";
-    umask $umask;
+    if ($logfile ne "-") {
+      my $umask = umask 0077;
+      open($log,">>",$logfile) or die "cannot open logfile \"$logfile\": $!";
+      umask $umask;
+    } else {
+      open($log,">&",STDOUT) or die "cannot open stdout as logfile: $!";
+    }
     $log->autoflush(1);
   } else {
     undef $log;
@@ -266,7 +269,7 @@ package Cron {
     if (ref $name eq "HASH") {
       $name = $name->{name};
     }
-    my $event = $cron->get_event($name);
+    my $event = $self->get_event($name);
     return defined $event;
   }
 
@@ -312,6 +315,55 @@ package Cron {
     }
     return $i;
   }
+}
+
+##### rate-limiting functions #####
+
+# at most 2 calls are made per (seconds/hit) time. No delays happen if
+# seconds/hit are not reached.
+# type => [seconds/hit, acceptable queue len ]
+my $rate_limit_config = {
+  "socket-pinentry" => [1,10],
+};
+
+my $rate_limit_state;
+sub rate_limited {
+  my ($type,$code) = @_;
+  die "not a code ref" unless ref $code eq "CODE";
+  my $conf = $rate_limit_config->{$type}//
+             $rate_limit_config->{_default}//[1,10];
+  my ($dt,$len) = @$conf;
+  my $state = \$rate_limit_state->{$type};
+  my $time = time;
+  if (!defined $$state) {
+    $$state = { last => $time-2*$dt, queue => [] };
+  }
+  if ($$state->{last} <= $time-$dt) {
+    $$state->{last} = $time;
+    $code->();
+  } else {
+    my $n = @{$$state->{queue}};
+    # we don't want arbitrary queue lengths but we also don't want a DoS by
+    # filling up a queue. As a compromise you can fight a DoS by
+    # counter-DoSing to get your valid query in between the fake
+    # ones by chance.
+    my $accept = $n < $len || (rand() < 1/2**($n-$len));
+    return 0 unless $accept;
+    push @{$$state->{queue}}, $code;
+    if ($n == 0) {
+      # we don't support changing the config over time, so we just use the
+      # locals in the closure.
+      my $task;
+      $task = sub {
+        my $n = @{$$state->{queue}};
+        my $code = shift @{$$state->{queue}};
+        $cron->schedule(time+$dt,"rate_limit_$type",$task) if $n > 1;
+        $code->() if $n > 0;
+      };
+      $cron->schedule(time+$dt,"rate_limit_$type",$task);
+    }
+  }
+  return 1;
 }
 
 ##### listener functions #####
@@ -432,7 +484,8 @@ sub setup_server {
     unlink $ux_path;
   }
   my $umask = umask 0077;
-  $server = IO::Socket::UNIX->new(Type => SOCK_DGRAM, Local => $ux_path, Listen => 5) or die "cannot open server";
+  $server = IO::Socket::UNIX->new(Type => SOCK_DGRAM, Local => $ux_path, Listen => 5) or die "cannot open server socket: $!";
+  $server->blocking(0);
   umask($umask);
   if ($server_group ne "") {
     #my $gid = (getgrnam($server_group))[2];
@@ -446,7 +499,7 @@ sub setup_server {
 }
 
 sub setup_stdio {
-  ($stdin,$stdout) = ("",undef);
+  ($stdin,$stdout) = (-1,undef);
   if ($use_stdio) {
     $stdin = \*STDIN;
     # FIXME: This apparently affects *every* process holding that pty:
@@ -467,7 +520,7 @@ sub setup {
   $running = 0;
   if ($opts{pidfile} ne "") {
     open(my $f,">",$opts{pidfile}) or die "cannot write pidfile: $!";
-    print $f, $$;
+    print $f $$,"\n";
     close($f);
   }
 }
@@ -478,7 +531,7 @@ sub setup {
 # commands are forwarded directly to the device
 my $valid_command = qr/^![a-zA-Z0-9].*$/;
 # requests are directly processed from this script.
-my $valid_request = qr/^\.(?<name>register|unregister|baudrate|close|open|pinentry|state|reset_device)(?<param>(?: \w+)*)$/;
+my $valid_request = qr/^\.(?<name>register|unregister|baudrate|close|open|openfor|pinentry|state|reset_device)(?<param>(?: \w+)*)$/;
 
 my @default_wants = qw(W R);
 
@@ -527,6 +580,30 @@ my %request_handlers = (
     log_notice("open request by $param");
     send_dev("!D1\n");
   },
+  openfor => sub {
+    my ($from,$request) = @_;
+    my $param = $request->{param};
+    $param =~ s/^\s*//;
+    $param =~ s/\s*$//;
+    my ($subsystem, $userid, $check_perm) = split / +/, $param;
+    $check_perm //= 1;
+    my $valid = 1;
+    if ($check_perm) {
+      $valid = check_user_permission($userid);
+    }
+    if ($valid) {
+      log_notice("openfor request from $subsystem for $userid (".($check_perm?"valid":"unchecked").")");
+      send_dev("!D1\n");
+    } else {
+      log_notice("openfor request from $subsystem for $userid (invalid)");
+    }
+    my $datagram = sprintf "openfor %s %d", $userid, $valid?1:0;
+    my $res = eval { $server->send($datagram,0,$from); };
+    if (!$res) {
+      log_warning("Could not respond to an openfor request.");
+    }
+    return $res;
+  },
   close => sub {
     my ($from,$request) = @_;
     my $param = $request->{param};
@@ -542,7 +619,8 @@ my %request_handlers = (
     $param =~ s/^\s*//;
     $param =~ s/\s*$//;
     return if $param =~ /[^0-9]/;
-    handle_pinentry($param,"socket");
+    rate_limited("socket-pinentry",sub{ handle_pinentry($param,"socket"); });
+    # handle_pinentry($param,"socket");
   },
   state => sub {
     my ($from,$request) = @_;
@@ -610,7 +688,7 @@ sub passwd_lookup {
   };
   my $res = undef;
   while (my $line = <$f>) {
-    next if /^#/;
+    next if $line =~ /^#/;
     my @fields = split /:/, $line, 3;
     next if @fields < 2;
     # we don't want to expose any timing information to attackers, so we don't do shortcuts and loop through the whole file no matter where or whether we find the user entry.
@@ -644,6 +722,31 @@ sub verify_pin {
   # TODO: add mechanism for invalidation of often mistyped passwords.
 }
 
+sub check_user_permission {
+  my $user = shift;
+  return 0 unless $user =~ /[0-9]{4}/;
+  my $crypted = passwd_lookup($passwd_file,$user);
+  return 0 unless defined $crypted;
+  # TODO: check optional time-based permission here.
+  return 1;
+}
+
+sub handle_challenge {
+  my ($pin,$source) = @_;
+  # we only accept challenge-responses from the physical device.
+  return if $source ne "device";
+  if ($pin =~ /^(\d{4})(\d{4})(\d+)$/) {
+    my ($salt,$user,$pw) = ($1,$2,$3);
+    my $valid = verify_pin($user,$pw);
+    if ($valid) {
+      send_listeners("challenge","$salt $user");
+      return 1;
+    }
+  }
+  send_listeners("challenge","FAIL");
+  return 0;
+}
+
 sub handle_pinentry {
   my ($pin,$source) = @_;
   log_notice("A pin has been entered from $source.");
@@ -652,6 +755,11 @@ sub handle_pinentry {
     $special->($pin);
   } elsif ($pin =~ /^(\d{4})(\d+)$/) {
     my ($user,$pw) = ($1,$2);
+    if ($user eq "0001") {
+      # this is a challenge request.
+      handle_challenge($pw,$source);
+      return;
+    }
     my $valid = verify_pin($user,$pw);
     if ($valid) {
       log_notice("User $user verified by PIN.");
@@ -723,8 +831,8 @@ my %device_handlers = (
   MFAIL => sub {
     my ($msg) = @_;
     my $param = $msg->{param};
-    if ($param =~/^[012]$/) {
-      log_warning("motor failing: ".("stall","failure to run","failure to stop")[$param]);
+    if ($param =~/^[123]$/) {
+      log_warning("motor failing: ".("stall","failure to run","failure to stop")[$param-1]);
     } else {
       log_warning("invalid mfail parameter \"$param\"");
     }

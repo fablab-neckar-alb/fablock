@@ -1,0 +1,25 @@
+digraph G {
+    // Initial state
+    start [shape=point]
+    start -> DOOR_MODE_IDLE
+
+    // States
+    ANY_STATE [label="any", style=dashed]
+    DOOR_MODE_IDLE [label="Idle"]
+    DOOR_MODE_LOCKING [label="Locking"]
+    DOOR_MODE_UNLOCKING [label="UnLocking"]
+    DOOR_MODE_UNLOCKRETRACT [label="UnLockretract"]
+    DOOR_MODE_LOCKRETRACT [label="Lockretract"]
+    
+    // Transitions
+    DOOR_MODE_IDLE -> DOOR_MODE_LOCKING [label="closed"]
+    DOOR_MODE_UNLOCKING -> DOOR_MODE_IDLE [label="DOOR_UNLOCKLOCKTIME"]
+    DOOR_MODE_UNLOCKING -> DOOR_MODE_UNLOCKRETRACT [label="stall"]
+    DOOR_MODE_LOCKING -> DOOR_MODE_IDLE [label="locked"]
+    DOOR_MODE_LOCKING -> DOOR_MODE_LOCKRETRACT [label="stall"]
+    DOOR_MODE_LOCKRETRACT -> DOOR_MODE_IDLE [label="MFAIL_RECOVERTIME"]
+    DOOR_MODE_UNLOCKRETRACT -> DOOR_MODE_IDLE [label="MFAIL_RECOVERTIME"]
+
+    // Open event from any state to idle (using dashed lines and ANY_STATE)
+    ANY_STATE -> DOOR_MODE_IDLE [label="open"]
+}

@@ -99,15 +99,7 @@ eepromfs_index_t eep_index;
 #include "mccarthys_waltz.h"
 #endif
 
-
-
-
 #include <pinpad.h>
-
-
-
-
-
 
 //#define DOOR_MOTOR_IS_STEPPER
 #define DOOR_MOTOR_IS_DC
@@ -804,22 +796,6 @@ void EVENT_door_mode_changed(uint8_t old_mode) {
   enqueue_event_rel(DOOR_REPORT_DELAY,&report_state_event,NULL);
 }
 
-/*
-  gameboy project pins:
-    D3,D4,D5: display ports, output (TODO: which ones?)
-      There are: SS, D/C and reset...
-    D6,D7,B0,B1: button ports, input (up,right,left,down)
-                 (TODO: That's PCINT2 and PCINT0.)
-    B3,B5: SDO,SCK for display
-    3V3,GND for display, GND for buttons.
-
-  project pins for fablock:
-    pinpad: C4, A/D in/irq
-    speaker: C5, out
-    motor: C0,C1, out
-    door sensor: C2, in/irq
-    door bolt sensort: C3, in/irq
-*/
 
 void startup() {
   // disable watchdog if enabled

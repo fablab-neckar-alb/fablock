@@ -1,5 +1,5 @@
-#ifndef MOTOR_SERVO_H
-#define MOTOR_SERVO_H
+#ifndef MOTOR_HR8833_H
+#define MOTOR_HR8833_H
 
 #include <stdint.h>
 
@@ -18,19 +18,18 @@ void inline door_motor_init(){
   0 = stop
   1 = forward
   2 = backward
-  everything else is invalid
 */
-void inline door_set_motor(uint8_t value){
-  if(value == 0){
+void inline door_set_motor(uint8_t dir){
+  if(dir == 0){
     CONCAT(PORT, MOTOR_DRIVER_HR8833_DIR_PORT) &= ~((1 << MOTOR_DRIVER_HR8833_L) | (1 << MOTOR_DRIVER_HR8833_R));
     CONCAT(PORT, MOTOR_DRIVER_HR8833_ENABLE_PORT) &= ~(1 << MOTOR_DRIVER_HR8833_ENABLE);
   }
-  else if (value == 1){
+  else if (dir == 1){
     CONCAT(PORT, MOTOR_DRIVER_HR8833_DIR_PORT) &= ~((1 << MOTOR_DRIVER_HR8833_L) | (1 << MOTOR_DRIVER_HR8833_R));
     CONCAT(PORT, MOTOR_DRIVER_HR8833_DIR_PORT) |= (1 << MOTOR_DRIVER_HR8833_L) ;
     CONCAT(PORT, MOTOR_DRIVER_HR8833_ENABLE_PORT) |= (1 << MOTOR_DRIVER_HR8833_ENABLE);
   }
-  else if (value == 2){
+  else if (dir == 2){
     CONCAT(PORT, MOTOR_DRIVER_HR8833_DIR_PORT) &= ~((1 << MOTOR_DRIVER_HR8833_L) | (1 << MOTOR_DRIVER_HR8833_R));
     CONCAT(PORT, MOTOR_DRIVER_HR8833_DIR_PORT) |= (1 << MOTOR_DRIVER_HR8833_R) ;
     CONCAT(PORT, MOTOR_DRIVER_HR8833_ENABLE_PORT) |= (1 << MOTOR_DRIVER_HR8833_ENABLE);
@@ -38,4 +37,4 @@ void inline door_set_motor(uint8_t value){
 }
 
 
-#endif /* MOTOR_SERVO_H */
+#endif /* MOTOR_HR8833_H */

@@ -1,0 +1,49 @@
+Communication with the lockserver:
+send datagrams to /run/lockserver.sock with send()
+if you want a reply, bind your socket first.
+
+a message is a string, the first word of which is a command: "command args". Optionally terminated with a line feed.
+
+Commands starting with a "." are processed by the daemon. Commands starting with a "!" are forwarded to the microcontroller.
+
+The commands are (see $valid_request):
+.register <events>...
+  registers the sender for a list of event types. The registration times out after 1 hour. This request is idempotent.
+  events:
+    log_debug, log_notice, log_warning, log_error: get log messages
+    W, R: get lines written to/read from the device
+    challenge: get challenge messages
+      a challenge consists of "0001", 4 salt digits and the user pin.
+      The challenge message contains "challenge <salt> <userid>" for a valid
+      challenge and "challenge FAIL" for an invalid challenge.
+
+.unregister <events>...
+  unregisters from the given events.
+
+.baudrate <rate>
+  changes the baudrate on server and device.
+
+.close <requester>
+  closes the door (forcefully) for <requester> subsystem.
+
+.open <requester>
+  opens the door (unconditionally) for <requester> subsystem.
+
+.openfor <requester> <userid> <check_permission>
+  opens the door for user <userid>, requested by subsystem <requester>.
+  if <check_permission> is nonzero, the userid will be checked for
+  existence and permission.
+  replies with "openfor <userid> <valid>".
+  <valid> is nonzero iff the request was fulfilled.
+
+.pinentry <pin>
+  simulates the entry of a pin.
+
+.state
+  requests the state of the door. The reply is "state <locked?1:0> <closed?1:0> <opening?2:closing?1:0> <status-info?2:succeeded?1:0>".
+
+.reset_device
+  resets the device.
+
+(?<param>(?: \w+)*)$/;
+

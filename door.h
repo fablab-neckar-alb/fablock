@@ -83,7 +83,13 @@
 #define DOOR_MOTOR_SENSE_VOLTAGE_RUNNING 900
 #define DOOR_MOTOR_SENSE_VOLTAGE_STALL 720
 #define DOOR_MOTOR_SENSE_FUZZ 10
-//((int16_t)(0.2*1024/5))
+
+#define DOOR_MODE_IDLE 0
+#define DOOR_MODE_LOCKING 1 
+#define DOOR_MODE_UNLOCKING 2
+#define DOOR_MODE_LOCKRETRACT 3
+#define DOOR_MODE_UNLOCKRETRACT 4
+
 uint8_t door_mode = 0;
 
 bool door_is_locked()
@@ -102,7 +108,7 @@ bool door_is_closed()
   2 = backward
   everything else is invalid
 */
-void door_set_motor(uint8_t value);
+void door_set_motor(uint8_t dir);
 void door_schedule_mfail_recover(uint8_t mode);
 
 
@@ -113,38 +119,16 @@ void door_schedule_mfail_recover(uint8_t mode);
 
 #elif defined(MOTOR_IS_SERVO)
 #include "motor/servo.h"
-void door_set_motor(uint8_t value) {
-  if (value < 3) {
-    if (value == 0) {
-      // disable motor
-      servo_stop();
-    } else {
-      // set direction pin
-      if (value == 2)
-        servo_set_pos(0);
-      else
-        servo_set_pos(255);
-      // enable motor and run it.
-      // TODO: should we really make a servo_maybe_start()?
-      // TODO: should we really rely on servo_stop() to be idempotent?
-      servo_stop();
-      servo_start();
-    }
-  }
-}
 
-void door_motor_init() {
-  servo_init();
-}
-
-
+#elif defined(MOTOR_IS_STEPPER)
+#include "motor/stepper.h"
 #else
 #error "Unknown Motor Configuration"
 #endif
 
 void door_init()
 {
-  door_mode = 0;
+  door_mode = DOOR_MODE_IDLE;
   CONCAT(DDR, DOOR_BOLTSENSOR_PORT) &= ~(1 << DOOR_BOLTSENSOR_PIN);
   CONCAT(DDR, DOOR_SENSOR_PORT) &= ~(1 << DOOR_SENSOR_PIN);
   CONCAT(PORT, DOOR_BOLTSENSOR_PORT) |= (1 << DOOR_BOLTSENSOR_PIN);
@@ -156,6 +140,7 @@ void door_init()
 void EVENT_door_locked(bool success);
 void EVENT_door_unlocked(bool success);
 void EVENT_door_mode_changed(uint8_t old_mode);
+void motor_stop_event(void *param);
 
 void door_lock();
 
@@ -165,7 +150,7 @@ void door_enter_mode(uint8_t mode)
   door_mode = mode;
   door_set_motor(mode);
   uint8_t mask = (1 << DOOR_MOTOR_SENSE_PIN);
-  if (mode == 0)
+  if (mode == DOOR_MODE_IDLE)
   {
     // we're not watching the motor when it's stopped.
     adc_watch_set_mask(adcw_state.mask & ~mask);
@@ -187,43 +172,45 @@ void EVENT_door_motor_failing(uint8_t);
   2 = not running, but should
   3 = running, but should not
 */
-
+#define MOTOR_SENSE_EVENT_REASON_stall 1
+#define MOTOR_SENSE_EVENT_REASON_not_running_but_should 2
+#define MOTOR_SENSE_EVENT_REASON_running_but_should_not 3
 void door_maybe_motorfail_event(void *param)
 {
   uint8_t reason = (uint16_t)param;
 
-  if (reason == 1)
+  if (reason == MOTOR_SENSE_EVENT_REASON_stall)
   {
     // motor stalls. Stop motor immediately.
     // Maybe we hit an end (check by locking switch).
     // Otherwise bad, notify user.
     uint8_t mode = door_mode;
-    door_enter_mode(0);
+    door_enter_mode(DOOR_MODE_IDLE);
     if (mode == 0 ||                        // The motor should never stall when it is off.
         (mode == 1 && !door_is_locked()) || // locking failed
         (mode == 2 && door_is_locked()))    // unlocking failed
       {
         EVENT_door_motor_failing(reason);
       }
-    if (mode == 1){
-      door_schedule_mfail_recover(2);
+    if (mode == DOOR_MODE_LOCKING){
+      door_schedule_mfail_recover(DOOR_MODE_LOCKRETRACT);
       EVENT_door_locked(door_is_locked());
     }
-    else if (mode == 2){
-      door_schedule_mfail_recover(1);
+    else if (mode == DOOR_MODE_UNLOCKING){
+      door_schedule_mfail_recover(DOOR_MODE_UNLOCKRETRACT);
       EVENT_door_unlocked(!door_is_locked());
     }
   }
-  else if (reason == 2)
+  else if (reason == MOTOR_SENSE_EVENT_REASON_not_running_but_should)
   {
     // motor is not running, but should be. Notify user.
-    if (door_mode != 0)
+    if (door_mode != DOOR_MODE_IDLE)
       EVENT_door_motor_failing(reason);
   }
-  else if (reason == 3)
+  else if (reason == MOTOR_SENSE_EVENT_REASON_running_but_should_not)
   {
     // motor is running, but shouldn't be. Notify user.
-    if (door_mode == 0)
+    if (door_mode == DOOR_MODE_IDLE)
       EVENT_door_motor_failing(reason);
   }
 }
@@ -259,28 +246,41 @@ void door_on_motor_sense_read(int16_t value)
   adc_watch_set_range(DOOR_MOTOR_SENSE_PIN, low, high);
   dequeue_events(&door_maybe_motorfail_event);
   if (reason == 1 ||
-      (reason == 2 && door_mode != 0) ||
-      (reason == 3 && door_mode == 0))
+      (reason == 2 && door_mode != DOOR_MODE_IDLE) ||
+      (reason == 3 && door_mode == DOOR_MODE_IDLE))
   {
     enqueue_event_rel(dtime, &door_maybe_motorfail_event, (void *)(uint16_t)reason);
   }
 }
 
+/*
 
+  if param is NULL
+        motor is stopped
+        check if closing check if door is (not locked) and closed
+          retry again later
+        also check if closing
+          report locking result to the user 
+        also check if opening
+          report unlocking result to the user 
+  if param == 1 -> retry again
+   
+
+ */
 void door_lock_event(void *param)
 {
   if (param == NULL)
   {
     uint8_t mode = door_mode;
-    door_enter_mode(0);
-    if (mode == 1 && !door_is_locked() && door_is_closed())
+    door_enter_mode(DOOR_MODE_IDLE);
+    if (mode == DOOR_MODE_LOCKING && !door_is_locked() && door_is_closed())
     {
       // retry later.
       enqueue_event_rel(DOOR_RETRYLOCKTIME, &door_lock_event, (void *)1);
     }
-    if (mode == 1)
+    if (mode == DOOR_MODE_LOCKING)
       EVENT_door_locked(door_is_locked());
-    else if (mode == 2)
+    else if (mode == DOOR_MODE_UNLOCKING)
       EVENT_door_unlocked(!door_is_locked());
   }
   else if (param == (void *)1)
@@ -294,7 +294,7 @@ void door_lock_event(void *param)
 void door_schedule_locking(uint32_t reltime)
 {
   dequeue_events(&door_lock_event);
-  door_enter_mode(0);
+  door_enter_mode(DOOR_MODE_IDLE);
   enqueue_event_rel(reltime, &door_lock_event, (void *)1);
 }
 
@@ -302,7 +302,7 @@ void door_lock()
 {
   // turn motor until sensor says yo plus delta.
   dequeue_events(&door_lock_event);
-  door_enter_mode(1);
+  door_enter_mode(DOOR_MODE_LOCKING);
   enqueue_event_rel(DOOR_MAXLOCKTIME, &door_lock_event, NULL);
 }
 
@@ -310,16 +310,27 @@ void door_unlock()
 {
   // turn motor back until sensor says yo plus delta.
   dequeue_events(&door_lock_event);
-  door_enter_mode(2);
+  door_enter_mode(DOOR_MODE_UNLOCKING);
   enqueue_event_rel(DOOR_MAXUNLOCKTIME, &door_lock_event, NULL);
 }
 
 void door_schedule_mfail_recover(uint8_t mode){
   //after a seized motor stop schedule a short turn in the opposed direction
   dequeue_events(&door_lock_event);
-  
-  door_set_motor(mode);
-  enqueue_event_rel(DOOR_MFAIL_RECOVERTIME, &door_lock_event, NULL);
+  uint8_t dir = 0;
+  if(mode == DOOR_MODE_LOCKRETRACT){
+    dir = 2;
+  }
+  if(mode == DOOR_MODE_UNLOCKRETRACT){
+    dir = 1;
+  }
+  door_set_motor(dir);
+  enqueue_event_rel(DOOR_MFAIL_RECOVERTIME, &motor_stop_event, NULL);
+
+}
+
+void motor_stop_event(void *param){
+  door_set_motor(0);
 
 }
 
@@ -330,33 +341,28 @@ void door_sensor_changed()
 {
   if (door_is_closed())
   {
-    /*    dequeue_events(&door_lock_event);
-        door_mode = 0;
-        door_set_motor(0);
-        enqueue_event_rel(DOOR_CLOSELOCKTIME,&door_lock_event,(void*)1);
-    */
     door_schedule_locking(DOOR_CLOSELOCKTIME);
   }
   else
   {
-    door_enter_mode(0);
+    door_enter_mode(DOOR_MODE_IDLE);
   }
 }
 
 // to be called from pin-change interrupt handler
 void door_boltsensor_changed()
 {
-  if (door_mode == 1 && door_is_locked())
+  if (door_mode == DOOR_MODE_LOCKING && door_is_locked())
   {
     dequeue_events(&door_lock_event);
     enqueue_event_rel(DOOR_OVERLOCKTIME, &door_lock_event, NULL);
   }
-  else if (door_mode == 2 && !door_is_locked())
+  else if (door_mode == DOOR_MODE_UNLOCKING && !door_is_locked())
   {
     dequeue_events(&door_lock_event);
     enqueue_event_rel(DOOR_OVERUNLOCKTIME, &door_lock_event, NULL);
   }
-  else if (door_mode == 0 && !door_is_locked())
+  else if (door_mode == DOOR_MODE_IDLE && !door_is_locked())
   {
     door_schedule_locking(DOOR_UNLOCKLOCKTIME);
   }

@@ -7,8 +7,15 @@ use warnings;
 
 use IO::Select;
 use IO::Socket::UNIX;
+use Socket ();
 
 $ENV{ALSA_CARD} = "USB";
+
+# perls Socket functions don't understand Linux's autobind feature.
+my $sockaddr_un_auto = substr(pack_sockaddr_un("\0a"),0,-2);
+sub IO::Socket::UNIX::autobind {
+  $_[0]->bind($sockaddr_un_auto);
+}
 
 sub play_sound {
   my $name = shift;
@@ -27,13 +34,16 @@ sub play_sound {
 
 my $ux_path = "/run/lockserver.sock";
 my $sock;
+my $sel;
 my $register_interval = 1800;
 my $register_time = time+$register_interval;
 my $registered = 0;
 
 sub do_connect {
-  $sock = IO::Socket::UNIX->new(Type => SOCK_DGRAM, Local => "", Peer => $ux_path);
+  $sock = IO::Socket::UNIX->new(Type => SOCK_DGRAM, Peer => $ux_path);
   return 0 unless $sock;
+  $sock->autobind or return 0;
+  $sel = IO::Select->new($sock);
   $register_interval = 30;
   $registered = 0;
   $sock->send(".state"); # check for answer.
@@ -42,7 +52,14 @@ sub do_connect {
   return 1;
 }
 
-do_connect();
+if (!do_connect()) {
+  print STDERR "could not connect. Retrying...\n";
+  sleep(3);
+  while (!do_connect()) {
+    sleep(1);
+  }
+  print STDERR "finally connected.\n";
+}
 
 my $buffer = "";
 my $running = 1;
@@ -50,8 +67,6 @@ my $running = 1;
 $SIG{INT} = sub { $running = 0; };
 $SIG{CHLD} = "IGNORE";
 $SIG{HUP} = \&do_connect;
-
-my $sel = IO::Select->new($sock);
 
 my $state = 0; # $state == 1 iff we want the door to be unlocked.
 my @lockstate = ("","","","");
@@ -112,10 +127,11 @@ while ($running) {
       play_sound("access_denied");
     } elsif ($buffer =~ /^log_notice User \S+ verified by PIN\.$/) {
       play_sound("access_granted");
-    } elsif ($buffer =~ /^log_notice state /) {
+    } elsif ($buffer =~ /^state /) {
       # we know now that the registration was received.
       $registered = 1;
       $register_interval = 1800;
+      print STDERR "connection established.\n";
     } elsif ($buffer =~ /^log_notice exit with code /) {
       # DONE: reconnect, re-register, check connection.
       sleep(3);
