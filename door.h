@@ -50,21 +50,21 @@
           again that much later, when the motor has cooled down a bit.
   close = if the door just closed, wait this long to lock it.
 */
-#define DOOR_MINLOCKTIME msec2ticks(2000, TIMER_DIV)
+#define DOOR_MINLOCKTIME msec2ticks(5000, TIMER_DIV)
 // #define DOOR_MAXLOCKTIME msec2ticks(6000,TIMER_DIV)
-#define DOOR_MAXLOCKTIME msec2ticks(3000, TIMER_DIV)
+#define DOOR_MAXLOCKTIME msec2ticks(6000, TIMER_DIV)
 #define DOOR_OVERLOCKTIME msec2ticks(500, TIMER_DIV)
 #define DOOR_MFAIL_RECOVERTIME msec2ticks(200, TIMER_DIV)
 #define DOOR_MINUNLOCKTIME msec2ticks(2000, TIMER_DIV)
 // #define DOOR_MAXUNLOCKTIME msec2ticks(6000,TIMER_DIV)
 #define DOOR_MAXUNLOCKTIME msec2ticks(4 * 6000, TIMER_DIV)
 // #define DOOR_OVERUNLOCKTIME msec2ticks(1000,TIMER_DIV)
-#define DOOR_OVERUNLOCKTIME msec2ticks(3 * 6000, TIMER_DIV)
+#define DOOR_OVERUNLOCKTIME msec2ticks(3500, TIMER_DIV)
 #define DOOR_RETRYLOCKTIME sec2ticks(20, TIMER_DIV)
 #define DOOR_CLOSELOCKTIME sec2ticks(2, TIMER_DIV)
 #define DOOR_UNLOCKLOCKTIME sec2ticks(8, TIMER_DIV)
 
-#define DOOR_MOTORFAIL_STALL_TIME msec2ticks(250, TIMER_DIV)
+#define DOOR_MOTORFAIL_STALL_TIME msec2ticks(500, TIMER_DIV)
 #define DOOR_MOTORFAIL_IDLE_TIME msec2ticks(2000, TIMER_DIV)
 #define DOOR_MOTORFAIL_RUNNING_TIME msec2ticks(2000, TIMER_DIV)
 
@@ -94,7 +94,11 @@ uint8_t door_mode = 0;
 
 bool door_is_locked()
 {
+  #ifndef LOCK_PIN_IS_IVERTED
   return !(CONCAT(PIN, DOOR_BOLTSENSOR_PORT) & (1 << DOOR_BOLTSENSOR_PIN));
+  #else
+  return (CONCAT(PIN, DOOR_BOLTSENSOR_PORT) & (1 << DOOR_BOLTSENSOR_PIN));
+  #endif
 }
 
 bool door_is_closed()
